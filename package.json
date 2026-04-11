@@ -1,0 +1,22 @@
+{
+  "name": "openforum",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenForum — Student-only editorial & journalism platform for UTD CSVTU",
+  "scripts": {
+    "dev": "pnpm run --parallel dev",
+    "dev:web": "pnpm --filter @openforum/web dev",
+    "dev:api": "cd apps/api && cargo watch -x run",
+    "build": "pnpm run --parallel build",
+    "build:web": "pnpm --filter @openforum/web build",
+    "build:api": "cd apps/api && cargo build --release",
+    "lint": "pnpm --filter @openforum/web lint",
+    "typecheck": "pnpm --filter @openforum/web typecheck",
+    "clean": "pnpm --filter @openforum/web clean && cd apps/api && cargo clean"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.4"
+}

@@ -1,0 +1,46 @@
+[package]
+name = "openforum-api"
+version = "0.1.0"
+edition = "2024"
+description = "OpenForum REST API — Rust AXUM backend for the student journalism platform"
+authors = ["OpenForum Contributors"]
+
+[dependencies]
+# Web framework
+axum = { version = "0.8", features = ["json", "multipart"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth — JWT RS256 validation
+jsonwebtoken = "9"
+
+# HTTP client (Google Sheets/Drive API)
+reqwest = { version = "0.12", features = ["json"] }
+
+# Redis (Upstash — caching & rate limiting)
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# Input sanitization
+ammonia = "4"
+
+# Environment & config
+dotenvy = "0.15"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+slug = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true

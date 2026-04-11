@@ -1,0 +1,57 @@
+# ========================
+# Node / Next.js
+# ========================
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# ========================
+# Rust
+# ========================
+target/
+**/*.rs.bk
+Cargo.lock
+# Note: Cargo.lock is ignored because apps/api is a binary,
+# but for libraries you'd typically commit it.
+# We re-include it below for the api workspace.
+!apps/api/Cargo.lock
+
+# ========================
+# Environment variables
+# ========================
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# ========================
+# OS & Editor
+# ========================
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/settings.json
+.idea/
+
+# ========================
+# Logs
+# ========================
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# ========================
+# Vercel
+# ========================
+.vercel/
+
+# ========================
+# Docker
+# ========================
+docker-compose.override.yml
