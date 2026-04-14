@@ -1,14 +1,13 @@
 /**
  * Login Page — `/login`
  *
- * Provides Google and GitHub OAuth sign-in buttons.
- * Clearly communicates the @csvtu.ac.in email restriction.
- * After OAuth, the user is redirected to `/auth/callback` which
- * validates the domain and creates the session.
+ * Provides OAuth and email/password sign-in.
+ * Access is restricted to `@csvtu.ac.in` addresses.
  */
 
 "use client";
 
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_POST_LOGIN_REDIRECT,
@@ -16,53 +15,93 @@ import {
   normalizePostLoginRedirect,
 } from "@/lib/routes";
 import { useSearchParams } from "next/navigation";
-import { useState, Suspense } from "react";
+import { Suspense, useState, type FormEvent } from "react";
 
-/** Supported OAuth providers. */
 type OAuthProvider = "google" | "github";
+type LoginMethod = OAuthProvider | "email";
 
-/**
- * Inner component that uses useSearchParams (must be wrapped in Suspense).
- *
- * The Supabase client is created lazily inside the click handler
- * (not at module/component init time) so that Next.js can statically
- * prerender this page without needing the env vars at build time.
- */
+const ALLOWED_DOMAIN = "@csvtu.ac.in";
+
+function isAllowedInstitutionalEmail(email: string): boolean {
+  return email.trim().toLowerCase().endsWith(ALLOWED_DOMAIN);
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
   const redirect = normalizePostLoginRedirect(
     searchParams.get("redirect") ?? DEFAULT_POST_LOGIN_REDIRECT
   );
-  const [loading, setLoading] = useState<OAuthProvider | null>(null);
+  const signupUrl = `${ROUTES.signup}?redirect=${encodeURIComponent(redirect)}`;
 
-  /**
-   * Initiates the OAuth flow for the given provider.
-   * Supabase handles the redirect to the provider's consent screen.
-   * After consent, the provider redirects back to `/auth/callback`.
-   */
+  const [loading, setLoading] = useState<LoginMethod | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   async function handleOAuth(provider: OAuthProvider) {
+    setErrorMessage(null);
     setLoading(provider);
 
     try {
       const supabase = createClient();
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: `${window.location.origin}${ROUTES.auth.callback}?next=${encodeURIComponent(redirect)}`,
-          queryParams:
-            provider === "google"
-              ? { hd: "csvtu.ac.in" } // Hint Google to show only csvtu.ac.in accounts
-              : undefined,
+          queryParams: provider === "google" ? { hd: "csvtu.ac.in" } : undefined,
         },
       });
 
       if (error) {
-        console.error(`[login] OAuth (${provider}) failed:`, error.message);
+        setErrorMessage(error.message);
         setLoading(null);
       }
-    } catch (err) {
-      console.error(`[login] Failed to initialize auth:`, err);
+    } catch (error) {
+      console.error(`[login] OAuth (${provider}) failed:`, error);
+      setErrorMessage("Could not start sign-in. Please try again.");
+      setLoading(null);
+    }
+  }
+
+  async function handleEmailSignIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage(null);
+
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage("Email and password are required.");
+      return;
+    }
+
+    if (!isAllowedInstitutionalEmail(email)) {
+      setErrorMessage("Use your institutional @csvtu.ac.in email.");
+      return;
+    }
+
+    setLoading("email");
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        setErrorMessage(error.message);
+        setLoading(null);
+        return;
+      }
+
+      if (!isAllowedInstitutionalEmail(data.user?.email ?? email)) {
+        await supabase.auth.signOut();
+        window.location.href = `${ROUTES.auth.error}?reason=domain`;
+        return;
+      }
+
+      window.location.href = redirect;
+    } catch (error) {
+      console.error("[login] Email sign-in failed:", error);
+      setErrorMessage("Sign-in failed. Please try again.");
       setLoading(null);
     }
   }
@@ -70,73 +109,95 @@ function LoginForm() {
   return (
     <main className="min-h-screen flex items-center justify-center bg-[#f6f5f0] px-4">
       <div className="max-w-sm w-full">
-        {/* Brand */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <h1 className="text-3xl font-semibold text-[#1a1917] tracking-tight mb-2">
             OpenForum
           </h1>
           <p className="text-[#6b6960] text-sm leading-relaxed">
-            The student editorial platform for UTD CSVTU
+            Sign in with OAuth or your institutional email.
           </p>
         </div>
 
-        {/* OAuth Buttons */}
         <div className="space-y-3">
-          {/* Google */}
           <button
             onClick={() => handleOAuth("google")}
             disabled={loading !== null}
             className="w-full flex items-center justify-center gap-3 rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm font-medium text-[#1a1917] transition-all hover:bg-[#f6f5f0] hover:border-[#b8b6ae] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading === "google" ? (
-              <Spinner />
-            ) : (
-              <GoogleIcon />
-            )}
+            {loading === "google" ? <Spinner /> : <GoogleIcon />}
             Continue with Google
           </button>
 
-          {/* GitHub */}
           <button
             onClick={() => handleOAuth("github")}
             disabled={loading !== null}
             className="w-full flex items-center justify-center gap-3 rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm font-medium text-[#1a1917] transition-all hover:bg-[#f6f5f0] hover:border-[#b8b6ae] disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading === "github" ? (
-              <Spinner />
-            ) : (
-              <GitHubIcon />
-            )}
+            {loading === "github" ? <Spinner /> : <GitHubIcon />}
             Continue with GitHub
           </button>
         </div>
 
-        {/* Domain restriction notice */}
+        <div className="my-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-[#d1cfc8]" />
+          <span className="text-xs uppercase tracking-wider text-[#6b6960]">
+            or
+          </span>
+          <div className="h-px flex-1 bg-[#d1cfc8]" />
+        </div>
+
+        <form onSubmit={handleEmailSignIn} className="space-y-3">
+          <input
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            placeholder="you@csvtu.ac.in"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            className="w-full rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm text-[#1a1917] placeholder:text-[#9a988f] focus:outline-none focus:ring-2 focus:ring-[#d4613c]/25 focus:border-[#d4613c]"
+          />
+          <input
+            type="password"
+            autoComplete="current-password"
+            placeholder="Password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="w-full rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm text-[#1a1917] placeholder:text-[#9a988f] focus:outline-none focus:ring-2 focus:ring-[#d4613c]/25 focus:border-[#d4613c]"
+          />
+          <button
+            type="submit"
+            disabled={loading !== null}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a1917] px-4 py-3 text-sm font-medium text-[#f6f5f0] transition-colors hover:bg-[#2a2927] disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading === "email" ? <Spinner /> : null}
+            Sign in with Email
+          </button>
+        </form>
+
+        {errorMessage ? (
+          <p className="mt-4 rounded-lg border border-[#d4613c]/30 bg-[#fff3ef] px-4 py-3 text-sm text-[#8b2f1b]">
+            {errorMessage}
+          </p>
+        ) : null}
+
         <div className="mt-6 rounded-lg bg-[#e8e6e0] p-4 text-center">
           <p className="text-xs text-[#6b6960] leading-relaxed">
             Only <span className="font-medium text-[#1a1917]">@csvtu.ac.in</span>{" "}
-            email addresses are accepted. Sign in with your institutional account.
+            email addresses are accepted.
           </p>
         </div>
 
-        {/* Footer */}
-        <p className="mt-8 text-center text-xs text-[#6b6960]">
-          By signing in, you agree to the{" "}
-          <a href="/terms" className="underline hover:text-[#1a1917]">
-            Terms of Service
-          </a>{" "}
-          and{" "}
-          <a href="/privacy" className="underline hover:text-[#1a1917]">
-            Privacy Policy
-          </a>
-          .
+        <p className="mt-6 text-center text-sm text-[#6b6960]">
+          No account yet?{" "}
+          <Link href={signupUrl} className="underline hover:text-[#1a1917]">
+            Create one
+          </Link>
         </p>
       </div>
     </main>
   );
 }
 
-/** Login page wrapper with Suspense for useSearchParams. */
 export default function LoginPage() {
   return (
     <Suspense
@@ -150,10 +211,6 @@ export default function LoginPage() {
     </Suspense>
   );
 }
-
-// ──────────────────────────────────────────────────────────────
-// Inline SVG Icons
-// ──────────────────────────────────────────────────────────────
 
 function GoogleIcon() {
   return (

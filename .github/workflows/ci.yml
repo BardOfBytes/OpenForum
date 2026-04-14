@@ -110,8 +110,23 @@ jobs:
       - name: Install Dependencies
         run: pnpm install
 
+      - name: Validate Vercel Secrets
+        run: |
+          if [ -z "${{ secrets.VERCEL_TOKEN }}" ]; then
+            echo "Error: VERCEL_TOKEN secret is not set."
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_ORG_ID }}" ]; then
+            echo "Error: VERCEL_ORG_ID secret is not set."
+            exit 1
+          fi
+          if [ -z "${{ secrets.VERCEL_PROJECT_ID }}" ]; then
+            echo "Error: VERCEL_PROJECT_ID secret is not set."
+            exit 1
+          fi
+
       - name: Deploy Frontend (Vercel)
-        run: npx vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} --yes
+        run: npx vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

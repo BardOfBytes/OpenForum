@@ -22,7 +22,7 @@ import { DEFAULT_POST_LOGIN_REDIRECT, ROUTES } from "@/lib/routes";
 const PROTECTED_ROUTES = [ROUTES.write, "/profile", "/search"];
 
 /** Routes that authenticated users should be redirected away from. */
-const AUTH_ROUTES = [ROUTES.login, "/auth"];
+const AUTH_ROUTES = [ROUTES.login, ROUTES.signup, "/auth"];
 
 /**
  * Determines if a given pathname starts with any of the specified prefixes.

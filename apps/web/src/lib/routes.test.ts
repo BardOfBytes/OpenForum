@@ -10,6 +10,7 @@ describe("route map normalization", () => {
   it("keeps canonical route decisions locked", () => {
     expect(ROUTES.articles).toBe("/articles");
     expect(ROUTES.article.detail("hello-world")).toBe("/articles/hello-world");
+    expect(ROUTES.signup).toBe("/signup");
     expect(ROUTES.write).toBe("/write");
     expect(DEFAULT_POST_LOGIN_REDIRECT).toBe("/articles");
   });
