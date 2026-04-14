@@ -52,8 +52,7 @@ fn is_allowed_origin(origin: &str, configured_frontend_origin: &str) -> bool {
         return true;
     }
 
-    if normalized_origin == "http://localhost:3000"
-        || normalized_origin == "http://127.0.0.1:3000"
+    if normalized_origin == "http://localhost:3000" || normalized_origin == "http://127.0.0.1:3000"
     {
         return true;
     }
