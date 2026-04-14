@@ -9,7 +9,10 @@ import {
 describe("route map normalization", () => {
   it("keeps canonical route decisions locked", () => {
     expect(ROUTES.articles).toBe("/articles");
+    expect(ROUTES.categories).toBe("/categories");
+    expect(ROUTES.about).toBe("/about");
     expect(ROUTES.article.detail("hello-world")).toBe("/articles/hello-world");
+    expect(ROUTES.category.detail("tech-ai")).toBe("/categories/tech-ai");
     expect(ROUTES.signup).toBe("/signup");
     expect(ROUTES.write).toBe("/write");
     expect(DEFAULT_POST_LOGIN_REDIRECT).toBe("/articles");
@@ -19,6 +22,8 @@ describe("route map normalization", () => {
     expect(legacyRedirectFor("/feed")).toBe("/articles");
     expect(legacyRedirectFor("/article/new")).toBe("/write");
     expect(legacyRedirectFor("/article/some-slug")).toBe("/articles/some-slug");
+    expect(legacyRedirectFor("/category")).toBe("/categories");
+    expect(legacyRedirectFor("/category/tech-ai")).toBe("/categories/tech-ai");
   });
 
   it("sanitizes post-login redirect values", () => {

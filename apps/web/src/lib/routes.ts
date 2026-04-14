@@ -4,6 +4,9 @@ export const ROUTES = {
   signup: "/signup",
   write: "/write",
   articles: "/articles",
+  categories: "/categories",
+  categoryLegacy: "/category",
+  about: "/about",
   feedLegacy: "/feed",
   articleNewLegacy: "/article/new",
   auth: {
@@ -13,6 +16,10 @@ export const ROUTES = {
   article: {
     detail: (slug: string) => `/articles/${slug}`,
     detailLegacy: (slug: string) => `/article/${slug}`,
+  },
+  category: {
+    detail: (slug: string) => `/categories/${slug}`,
+    detailLegacy: (slug: string) => `/category/${slug}`,
   },
 } as const;
 
@@ -28,6 +35,14 @@ export function normalizePostLoginRedirect(next: string | null | undefined): str
 export function legacyRedirectFor(pathname: string): string | null {
   if (pathname === ROUTES.feedLegacy) return ROUTES.articles;
   if (pathname === ROUTES.articleNewLegacy) return ROUTES.write;
+  if (pathname === ROUTES.categoryLegacy) return ROUTES.categories;
+
+  const legacyCategoryPrefix = `${ROUTES.categoryLegacy}/`;
+  if (pathname.startsWith(legacyCategoryPrefix)) {
+    const slug = pathname.slice(legacyCategoryPrefix.length).trim();
+    if (!slug) return ROUTES.categories;
+    return ROUTES.category.detail(slug);
+  }
 
   const legacyArticlePrefix = "/article/";
   if (pathname.startsWith(legacyArticlePrefix)) {

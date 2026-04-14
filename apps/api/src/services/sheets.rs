@@ -15,11 +15,11 @@ const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 /// Google Sheets API scope.
 const SCOPE_SPREADSHEETS: &str = "https://www.googleapis.com/auth/spreadsheets";
 const POSTS_SHEET_TITLE: &str = "posts";
-const POSTS_HEADER_RANGE: &str = "posts!A1:L1";
-const POSTS_LIST_RANGE: &str = "posts!A2:L";
-const POSTS_LOOKUP_RANGE: &str = "posts!A:L";
+const POSTS_HEADER_RANGE: &str = "posts!A1:N1";
+const POSTS_LIST_RANGE: &str = "posts!A2:N";
+const POSTS_LOOKUP_RANGE: &str = "posts!A:N";
 const POSTS_APPEND_RANGE: &str = "posts!A:A";
-const POSTS_HEADER_ROW: [&str; 12] = [
+const POSTS_HEADER_ROW: [&str; 14] = [
     "id",
     "slug",
     "title",
@@ -32,6 +32,8 @@ const POSTS_HEADER_ROW: [&str; 12] = [
     "created_at",
     "updated_at",
     "views",
+    "cover_image_url",
+    "body",
 ];
 
 #[derive(Deserialize, Debug)]
@@ -322,12 +324,25 @@ impl SheetsService {
             .await
             .context("Failed to decode Google Sheets header read response")?;
 
-        let header_missing = match range.values.first() {
-            Some(row) => row.iter().all(|cell| cell.trim().is_empty()),
+        let header_needs_update = match range.values.first() {
+            Some(row) => {
+                if row.iter().all(|cell| cell.trim().is_empty()) {
+                    true
+                } else {
+                    POSTS_HEADER_ROW
+                        .iter()
+                        .enumerate()
+                        .any(|(index, expected)| {
+                            row.get(index)
+                                .map(|actual| !expected.eq_ignore_ascii_case(actual.trim()))
+                                .unwrap_or(true)
+                        })
+                }
+            }
             None => true,
         };
 
-        if !header_missing {
+        if !header_needs_update {
             return Ok(());
         }
 
@@ -418,6 +433,14 @@ impl SheetsService {
             .filter(|s| !s.trim().is_empty())
             .map(|s| s.trim().to_string())
             .collect();
+        let cover_image_url = row
+            .get(12)
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let body = row.get(13).map(|value| value.trim()).unwrap_or("");
+        let word_source = if body.is_empty() { row[3].trim() } else { body };
+        let read_time_minutes = (word_source.split_whitespace().count() / 200).max(1) as u16;
 
         let category_name = row[6].clone();
         let category_color = match category_name.to_lowercase().as_str() {
@@ -426,6 +449,7 @@ impl SheetsService {
             "editorials" => "#8b5e3c",
             "internship diaries" => "#3d8b5f",
             "career paths" => "#9b59a6",
+            "culture & events" => "#c4852c",
             "investigations" => "#c4392b",
             _ => "#d4613c",
         };
@@ -445,7 +469,7 @@ impl SheetsService {
             created_at,
             updated_at,
             views,
-            cover_image_url: None,
+            cover_image_url,
             category: Category {
                 name: category_name,
                 color: category_color.to_string(),
@@ -455,8 +479,16 @@ impl SheetsService {
                 name: "Unknown Author".to_string(),
                 avatar_url: None,
             },
-            read_time_minutes: 5,
+            read_time_minutes,
         })
+    }
+
+    fn category_slug(category_name: &str) -> String {
+        slug::slugify(category_name)
+    }
+
+    fn is_feed_visible_status(status: &str) -> bool {
+        status.eq_ignore_ascii_case("Published") || status.eq_ignore_ascii_case("Draft")
     }
 
     async fn read_range(&self, range: &str) -> Result<Vec<Vec<String>>> {
@@ -501,17 +533,20 @@ impl SheetsService {
         offset: usize,
         category: Option<&str>,
     ) -> Result<Vec<ArticlePreview>> {
+        let normalized_category = category.map(|value| value.trim().to_ascii_lowercase());
+
         if let Some(mock_posts) = &self.mock_posts {
             let posts = mock_posts.read().await.clone();
-            let mut previews: Vec<ArticlePreview> =
-                posts.iter().map(ArticlePreview::from).collect();
+            let mut previews: Vec<ArticlePreview> = posts
+                .iter()
+                .map(ArticlePreview::from)
+                .filter(|item| Self::is_feed_visible_status(&item.status))
+                .collect();
             previews.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-            let filtered = if let Some(category_slug) = category {
+            let filtered = if let Some(category_slug) = normalized_category.as_deref() {
                 previews
                     .into_iter()
-                    .filter(|item| {
-                        item.category.name.to_lowercase().replace(' ', "-") == category_slug
-                    })
+                    .filter(|item| Self::category_slug(&item.category.name) == category_slug)
                     .collect::<Vec<_>>()
             } else {
                 previews
@@ -529,13 +564,11 @@ impl SheetsService {
         let mut previews: Vec<ArticlePreview> = rows
             .iter()
             .filter_map(|row| Self::row_to_article_preview(row))
-            .filter(|item| item.status.eq_ignore_ascii_case("Published"))
+            .filter(|item| Self::is_feed_visible_status(&item.status))
             .collect();
 
-        if let Some(category_slug) = category {
-            previews.retain(|item| {
-                item.category.name.to_lowercase().replace(' ', "-") == category_slug
-            });
+        if let Some(category_slug) = normalized_category.as_deref() {
+            previews.retain(|item| Self::category_slug(&item.category.name) == category_slug);
         }
 
         previews.sort_by(|a, b| b.created_at.cmp(&a.created_at));
@@ -553,15 +586,19 @@ impl SheetsService {
     }
 
     pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
+        let normalized_category = category.map(|value| value.trim().to_ascii_lowercase());
+
         if let Some(mock_posts) = &self.mock_posts {
             let posts = mock_posts.read().await.clone();
-            let previews: Vec<ArticlePreview> = posts.iter().map(ArticlePreview::from).collect();
-            let filtered = if let Some(category_slug) = category {
+            let previews: Vec<ArticlePreview> = posts
+                .iter()
+                .map(ArticlePreview::from)
+                .filter(|item| Self::is_feed_visible_status(&item.status))
+                .collect();
+            let filtered = if let Some(category_slug) = normalized_category.as_deref() {
                 previews
                     .into_iter()
-                    .filter(|item| {
-                        item.category.name.to_lowercase().replace(' ', "-") == category_slug
-                    })
+                    .filter(|item| Self::category_slug(&item.category.name) == category_slug)
                     .collect::<Vec<_>>()
             } else {
                 previews
@@ -574,13 +611,11 @@ impl SheetsService {
         let mut previews: Vec<ArticlePreview> = rows
             .iter()
             .filter_map(|row| Self::row_to_article_preview(row))
-            .filter(|item| item.status.eq_ignore_ascii_case("Published"))
+            .filter(|item| Self::is_feed_visible_status(&item.status))
             .collect();
 
-        if let Some(category_slug) = category {
-            previews.retain(|item| {
-                item.category.name.to_lowercase().replace(' ', "-") == category_slug
-            });
+        if let Some(category_slug) = normalized_category.as_deref() {
+            previews.retain(|item| Self::category_slug(&item.category.name) == category_slug);
         }
 
         Ok(previews.len() as u32)
@@ -603,6 +638,14 @@ impl SheetsService {
                 && row[1] == slug
                 && let Some(preview) = Self::row_to_article_preview(&row)
             {
+                let resolved_body = row
+                    .get(13)
+                    .map(String::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| format!("<p>{}</p>", preview.excerpt));
+
                 let article = Article {
                     id: preview.id,
                     slug: preview.slug,
@@ -616,7 +659,7 @@ impl SheetsService {
                     created_at: preview.created_at,
                     updated_at: preview.updated_at,
                     views: preview.views,
-                    body: String::new(),
+                    body: resolved_body,
                     cover_image_url: preview.cover_image_url,
                     category_detail: Some(preview.category),
                     author_detail: Some(preview.author),
@@ -641,7 +684,7 @@ impl SheetsService {
         let id = Uuid::new_v4();
         let slug = slug::slugify(&new_post.title);
         let now = Utc::now();
-        let status = "Draft".to_string();
+        let status = "Published".to_string();
         let read_time_minutes = (new_post.body.split_whitespace().count() / 200).max(1) as u16;
 
         let article = Article {
@@ -686,10 +729,12 @@ impl SheetsService {
             author_id.to_string(),
             new_post.category_name,
             new_post.tags.join(", "),
-            "Draft".to_string(),
+            "Published".to_string(),
             now.to_rfc3339(),
             now.to_rfc3339(),
             "0".to_string(),
+            new_post.cover_image_url.clone().unwrap_or_default(),
+            new_post.body,
         ];
 
         let body = SheetValueUpdate {

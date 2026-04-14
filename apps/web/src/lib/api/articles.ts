@@ -64,6 +64,19 @@ interface ApiPaginated<T> {
   total: number;
 }
 
+export interface GetArticlesOptions {
+  page?: number;
+  perPage?: number;
+  category?: string;
+}
+
+export interface GetArticlesPageResult {
+  data: ArticleListItem[];
+  page: number;
+  perPage: number;
+  total: number;
+}
+
 export class ApiHttpError extends Error {
   status: number;
 
@@ -111,6 +124,22 @@ function mapPreview(article: ApiArticlePreview): ArticleListItem {
   };
 }
 
+function buildArticlesPath(options: GetArticlesOptions = {}): string {
+  const query = new URLSearchParams();
+
+  if (options.page) {
+    query.set("page", String(options.page));
+  }
+  if (options.perPage) {
+    query.set("per_page", String(options.perPage));
+  }
+  if (options.category) {
+    query.set("category", options.category);
+  }
+
+  return query.size > 0 ? `/api/v1/articles?${query.toString()}` : "/api/v1/articles";
+}
+
 export function mapDetail(article: ApiArticle): ArticleDetail {
   return {
     id: article.id,
@@ -131,9 +160,22 @@ export function mapDetail(article: ApiArticle): ArticleDetail {
   };
 }
 
-export async function getArticles(): Promise<ArticleListItem[]> {
-  const response = await fetchJson<ApiPaginated<ApiArticlePreview>>("/api/v1/articles");
-  return response.data.map(mapPreview);
+export async function getArticlesPage(
+  options: GetArticlesOptions = {}
+): Promise<GetArticlesPageResult> {
+  const path = buildArticlesPath(options);
+  const response = await fetchJson<ApiPaginated<ApiArticlePreview>>(path);
+  return {
+    data: response.data.map(mapPreview),
+    page: response.page,
+    perPage: response.per_page,
+    total: response.total,
+  };
+}
+
+export async function getArticles(options: GetArticlesOptions = {}): Promise<ArticleListItem[]> {
+  const response = await getArticlesPage(options);
+  return response.data;
 }
 
 export async function getArticleBySlug(slug: string): Promise<ArticleDetail> {

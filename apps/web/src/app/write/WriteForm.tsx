@@ -6,16 +6,58 @@ import { X, Loader2 } from "lucide-react";
 import ArticleEditor from "@/components/editor/ArticleEditor";
 import { Button } from "@/components/ui/Button";
 import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
+import { CATEGORY_CATALOG } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
-const CATEGORIES = [
-  "Campus News",
-  "Tech & AI",
-  "Editorials",
-  "Internship Diaries",
-  "Career Paths",
-  "Investigations",
-];
+const CATEGORIES = CATEGORY_CATALOG.map((category) => category.name);
+
+function isEditorContentEmpty(html: string): boolean {
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+  const plainText = (temp.textContent || temp.innerText || "")
+    .replace(/\u00a0/g, " ")
+    .trim();
+
+  return plainText.length === 0 && !temp.querySelector("img");
+}
+
+function buildExcerptFromHtml(html: string, maxLen = 150): string {
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+  const textContent = (temp.textContent || temp.innerText || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (textContent.length <= maxLen) {
+    return textContent;
+  }
+
+  const truncated = textContent.slice(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(" ");
+  const safeBoundary = lastSpace > 0 ? lastSpace : maxLen;
+  return `${truncated.slice(0, safeBoundary)}...`;
+}
+
+function extractFirstImageUrl(html: string): string | null {
+  const temp = document.createElement("div");
+  temp.innerHTML = html;
+  const src = temp.querySelector("img")?.getAttribute("src")?.trim();
+
+  if (!src) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(src);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return src;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
 
 export default function WriteForm({ sessionToken }: { sessionToken: string }) {
   const router = useRouter();
@@ -62,7 +104,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
   }
 
   const handleSubmit = async () => {
-    if (!title.trim() || !contentHtml || contentHtml === "<p></p>") {
+    if (!title.trim() || isEditorContentEmpty(contentHtml)) {
       alert("Please enter a title and content.");
       return;
     }
@@ -70,18 +112,15 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     setIsSubmitting(true);
 
     try {
-      // Excerpt generation constraint (e.g. text from HTML)
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = contentHtml;
-      const textContent = tempDiv.textContent || tempDiv.innerText || "";
-      const excerpt = textContent.slice(0, 150) + (textContent.length > 150 ? "..." : "");
+      const excerpt = buildExcerptFromHtml(contentHtml);
+      const coverImageUrl = extractFirstImageUrl(contentHtml);
 
       const payload = {
         title: title.trim(),
         body: contentHtml,
         excerpt,
         content_gdoc_id: null,
-        cover_image_url: null, // You could parse the body here for the first image
+        cover_image_url: coverImageUrl,
         category_name: category,
         tags,
       };
@@ -98,6 +137,10 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       const body = await parseJsonSafe<{ message?: string; error?: string; slug?: string }>(
         res
       );
+
+      if (res.status === 401) {
+        throw new Error("Session expired. Please refresh and sign in again.");
+      }
 
       if (!res.ok) {
         throw new Error(
@@ -188,6 +231,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       {/* Tiptap Editor */}
       <div className="mb-8">
         <ArticleEditor
+          key={initialContent ? "editor-with-draft" : "editor-empty"}
           initialContent={initialContent}
           sessionToken={sessionToken}
           onChange={setContentHtml}
@@ -199,7 +243,10 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
         <Button variant="ghost" type="button" onClick={() => router.back()}>
           Cancel
         </Button>
-        <Button onClick={handleSubmit} disabled={isSubmitting || !title || !contentHtml}>
+        <Button
+          onClick={handleSubmit}
+          disabled={isSubmitting || !title.trim() || isEditorContentEmpty(contentHtml)}
+        >
           {isSubmitting ? (
             <>
               <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Publishing...

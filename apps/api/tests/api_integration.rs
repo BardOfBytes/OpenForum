@@ -191,6 +191,7 @@ async fn article_create_authenticated_flow_returns_201_with_slug() {
     });
 
     let response = app
+        .clone()
         .oneshot(
             Request::builder()
                 .uri("/api/v1/articles")
@@ -208,9 +209,35 @@ async fn article_create_authenticated_flow_returns_201_with_slug() {
 
     assert_eq!(body["title"], "Integration Test Article");
     assert_eq!(body["slug"], "integration-test-article");
-    assert_eq!(body["status"], "Draft");
+    assert_eq!(body["status"], "Published");
     assert!(body["id"].as_str().is_some());
     assert_eq!(body["tags"], json!(["integration", "rust"]));
+
+    let list_response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("GET")
+                .body(Body::empty())
+                .expect("list request"),
+        )
+        .await
+        .expect("list response");
+
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let list_body = json_body(list_response).await;
+    let slugs: Vec<String> = list_body["data"]
+        .as_array()
+        .expect("paginated list data array")
+        .iter()
+        .filter_map(|item| item.get("slug").and_then(Value::as_str))
+        .map(ToString::to_string)
+        .collect();
+
+    assert!(
+        slugs.iter().any(|slug| slug == "integration-test-article"),
+        "newly created article should be visible in latest article list"
+    );
 }
 
 #[tokio::test]

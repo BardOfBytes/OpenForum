@@ -54,7 +54,8 @@ const SOCIAL_LINKS = [
 
 const FOOTER_NAV = [
   { label: "Articles", href: ROUTES.articles },
-  { label: "About", href: "/about" },
+  { label: "Categories", href: ROUTES.categories },
+  { label: "About", href: ROUTES.about },
   { label: "Guidelines", href: "/guidelines" },
   { label: "Privacy", href: "/privacy" },
   { label: "Terms", href: "/terms" },

@@ -2,7 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { ApiHttpError, getArticleBySlug } from "@/lib/api/articles";
+import { ArticleGrid } from "@/components/home/ArticleGrid";
+import {
+  ApiHttpError,
+  getArticleBySlug,
+  getArticles,
+  type ArticleListItem,
+} from "@/lib/api/articles";
+import { categorySlugFromName, getCategoryBySlug } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +35,34 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
 
   try {
     const article = await getArticleBySlug(slug);
+    const categorySlug = categorySlugFromName(article.category.name);
+    const knownCategory = getCategoryBySlug(categorySlug);
+
+    let relatedArticles: ArticleListItem[] = [];
+    try {
+      const sameCategory = await getArticles({ category: categorySlug, perPage: 8 });
+      relatedArticles = sameCategory.filter((candidate) => candidate.slug !== slug).slice(0, 3);
+
+      if (relatedArticles.length < 3) {
+        const latest = await getArticles({ perPage: 12 });
+        const seen = new Set([slug, ...relatedArticles.map((item) => item.slug)]);
+
+        for (const candidate of latest) {
+          if (seen.has(candidate.slug)) {
+            continue;
+          }
+
+          relatedArticles.push(candidate);
+          seen.add(candidate.slug);
+
+          if (relatedArticles.length === 3) {
+            break;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(`[articles/${slug}] Failed to load related stories`, error);
+    }
 
     return (
       <>
@@ -62,6 +97,31 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
               </div>
             </div>
 
+            <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-surface min-h-[220px] relative">
+              {article.coverImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={article.coverImageUrl}
+                  alt=""
+                  className="w-full h-full max-h-[460px] object-cover"
+                />
+              ) : (
+                <div
+                  className="absolute inset-0"
+                  style={{
+                    background: `linear-gradient(135deg, ${article.category.color}20 0%, ${article.category.color}06 100%)`,
+                  }}
+                  aria-hidden="true"
+                >
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="font-body text-sm uppercase tracking-widest text-text-tertiary">
+                      {article.category.name}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div
               className="prose prose-lg max-w-none"
               dangerouslySetInnerHTML={{ __html: article.body }}
@@ -83,6 +143,31 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
                   ))}
                 </div>
               </div>
+            )}
+
+            {relatedArticles.length > 0 && (
+              <section className="mt-14 pt-8 border-t border-border-light">
+                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
+                  <div>
+                    <h2 className="font-heading text-2xl font-semibold text-text tracking-tight">
+                      More To Read
+                    </h2>
+                    <p className="font-body text-sm text-text-secondary mt-1">
+                      {knownCategory
+                        ? `More stories from ${knownCategory.name}`
+                        : "Related stories from the latest feed"}
+                    </p>
+                  </div>
+                  <Link
+                    href={knownCategory ? ROUTES.category.detail(categorySlug) : ROUTES.articles}
+                    className="inline-flex items-center text-sm font-medium text-accent hover:text-accent-hover transition-colors"
+                  >
+                    {knownCategory ? "Browse category" : "Browse all articles"}
+                  </Link>
+                </div>
+
+                <ArticleGrid articles={relatedArticles} />
+              </section>
             )}
           </article>
         </main>

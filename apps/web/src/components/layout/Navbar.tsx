@@ -38,8 +38,8 @@ const SCROLL_THRESHOLD = 32;
 /** Main navigation links. */
 const NAV_LINKS = [
   { label: "Articles", href: ROUTES.articles },
-  { label: "Categories", href: "/category" },
-  { label: "About", href: "/about" },
+  { label: "Categories", href: ROUTES.categories },
+  { label: "About", href: ROUTES.about },
 ] as const;
 
 /* ─────────────────────────────────────────────────────────────

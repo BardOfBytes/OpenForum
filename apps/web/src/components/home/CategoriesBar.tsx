@@ -9,19 +9,10 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
+import { CATEGORY_CATALOG } from "@/lib/categories";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
-/** Category data with display properties. */
-const CATEGORIES = [
-  { name: "Campus News", slug: "campus-news", color: "#d4613c" },
-  { name: "Tech & AI", slug: "tech-ai", color: "#3d7cc9" },
-  { name: "Editorials", slug: "editorials", color: "#8b5e3c" },
-  { name: "Internship Diaries", slug: "internship-diaries", color: "#3d8b5f" },
-  { name: "Career Paths", slug: "career-paths", color: "#9b59a6" },
-  { name: "Culture & Events", slug: "culture-events", color: "#c4852c" },
-  { name: "Investigations", slug: "investigations", color: "#c4392b" },
-] as const;
 
 const containerVariants = {
   hidden: {},
@@ -62,10 +53,10 @@ export function CategoriesBar() {
           aria-label="Category navigation"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
-          {CATEGORIES.map((cat) => (
+          {CATEGORY_CATALOG.map((cat) => (
             <motion.div key={cat.slug} variants={pillVariants}>
               <Link
-                href={`/category/${cat.slug}`}
+                href={ROUTES.category.detail(cat.slug)}
                 className="group inline-flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-border bg-bg-elevated hover:border-transparent transition-all duration-normal shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 style={{
                   // On hover, use the category color for the border
