@@ -78,7 +78,7 @@ function apiBaseUrl(): string {
 
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(`${apiBaseUrl()}${path}`, {
-    next: { revalidate: 30 },
+    cache: "no-store",
   });
 
   if (!response.ok) {

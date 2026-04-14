@@ -5,6 +5,8 @@ import { Footer } from "@/components/layout/Footer";
 import { ApiHttpError, getArticleBySlug } from "@/lib/api/articles";
 import { ROUTES } from "@/lib/routes";
 
+export const dynamic = "force-dynamic";
+
 interface ArticleDetailPageProps {
   params: Promise<{ slug: string }>;
 }

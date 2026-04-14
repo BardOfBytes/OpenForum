@@ -23,6 +23,8 @@ import { FeaturedArticle } from "@/components/home/FeaturedArticle";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
 import { ROUTES } from "@/lib/routes";
 
+export const dynamic = "force-dynamic";
+
 /* ─────────────────────────────────────────────────────────────
    DATA TYPES
    ───────────────────────────────────────────────────────────── */
