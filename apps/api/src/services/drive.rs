@@ -12,6 +12,7 @@ const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const SCOPE_DRIVE_FILE: &str = "https://www.googleapis.com/auth/drive.file";
 const MAX_FILE_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp"];
+const DRIVE_FOLDER_MIME_TYPE: &str = "application/vnd.google-apps.folder";
 
 #[derive(Deserialize, Debug)]
 struct ServiceAccountJson {
@@ -61,6 +62,25 @@ pub struct UploadResult {
 #[derive(Deserialize)]
 struct CreateFileResponse {
     id: String,
+    #[serde(rename = "driveId")]
+    drive_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct DriveFolderMetadataResponse {
+    id: String,
+    #[serde(rename = "mimeType")]
+    mime_type: String,
+    #[serde(rename = "driveId")]
+    drive_id: Option<String>,
+    #[serde(default)]
+    capabilities: DriveFolderCapabilities,
+}
+
+#[derive(Deserialize, Default)]
+struct DriveFolderCapabilities {
+    #[serde(rename = "canAddChildren")]
+    can_add_children: Option<bool>,
 }
 
 impl DriveService {
@@ -161,6 +181,67 @@ impl DriveService {
         Ok(response.access_token)
     }
 
+    async fn ensure_upload_folder_is_shared_drive(&self, token: &str) -> Result<()> {
+        let url = format!(
+            "https://www.googleapis.com/drive/v3/files/{}?fields=id,mimeType,driveId,capabilities/canAddChildren&supportsAllDrives=true",
+            self.folder_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("Google Drive folder metadata request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Drive folder metadata returned HTTP {status}: {error_body}");
+        }
+
+        let folder: DriveFolderMetadataResponse = response
+            .json()
+            .await
+            .context("Failed to parse Google Drive folder metadata response")?;
+
+        if folder.id != self.folder_id {
+            bail!(
+                "Google Drive folder metadata mismatch for GOOGLE_DRIVE_FOLDER_ID '{}'.",
+                self.folder_id
+            );
+        }
+
+        if folder.mime_type != DRIVE_FOLDER_MIME_TYPE {
+            bail!(
+                "GOOGLE_DRIVE_FOLDER_ID '{}' is not a folder (mimeType={}).",
+                self.folder_id,
+                folder.mime_type
+            );
+        }
+
+        if folder.drive_id.is_none() {
+            bail!(
+                "GOOGLE_DRIVE_FOLDER_ID '{}' must point to a folder inside a Shared Drive. Service accounts have no personal Drive quota.",
+                self.folder_id
+            );
+        }
+
+        if matches!(folder.capabilities.can_add_children, Some(false)) {
+            bail!(
+                "Service account '{}' cannot upload to Shared Drive folder '{}'. Grant Content manager access on the Shared Drive.",
+                self.service_email,
+                self.folder_id
+            );
+        }
+
+        Ok(())
+    }
+
     pub async fn upload_file(
         &self,
         filename: &str,
@@ -192,6 +273,8 @@ impl DriveService {
         }
 
         let token = self.get_access_token().await?;
+        self.ensure_upload_folder_is_shared_drive(&token).await?;
+
         let metadata = serde_json::json!({
             "name": filename,
             "parents": [self.folder_id],
@@ -200,7 +283,7 @@ impl DriveService {
 
         let create_response = self
             .client
-            .post("https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true")
+            .post("https://www.googleapis.com/drive/v3/files?fields=id,driveId&supportsAllDrives=true")
             .bearer_auth(&token)
             .json(&metadata)
             .send()
@@ -220,6 +303,12 @@ impl DriveService {
             .json()
             .await
             .context("Failed to parse Google Drive create-file response")?;
+
+        if create_response.drive_id.is_none() {
+            bail!(
+                "Created Drive file is not in a Shared Drive. Verify GOOGLE_DRIVE_FOLDER_ID points to a Shared Drive folder."
+            );
+        }
 
         let upload_url = format!(
             "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media&supportsAllDrives=true",

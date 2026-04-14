@@ -33,12 +33,28 @@ fn infer_mime_type_from_filename(filename: &str) -> Option<&'static str> {
 }
 
 fn map_upstream_upload_error(message: &str) -> &'static str {
+    if message.contains("storageQuotaExceeded")
+        || message.contains("Service Accounts do not have storage quota")
+    {
+        return "Google Drive rejected this upload because service accounts have no personal storage quota. Use a folder inside a Shared Drive and grant the service account Content manager access.";
+    }
+
+    if message.contains("must point to a folder inside a Shared Drive")
+        || message.contains("not in a Shared Drive")
+    {
+        return "GOOGLE_DRIVE_FOLDER_ID must be a folder inside a Shared Drive. Do not use a personal My Drive folder link.";
+    }
+
+    if message.contains("cannot upload to Shared Drive folder") {
+        return "Service account lacks upload permission on the Shared Drive folder. Add it as Content manager on the Shared Drive.";
+    }
+
     if message.contains("create-file returned HTTP 404") {
         return "Drive folder not found. Verify GOOGLE_DRIVE_FOLDER_ID in backend environment variables.";
     }
 
     if message.contains("create-file returned HTTP 403") {
-        return "Drive write access denied. Share the target folder with the Google service account email.";
+        return "Drive write access denied. Add the service account as Content manager on the Shared Drive and verify GOOGLE_DRIVE_FOLDER_ID points to a folder in that drive.";
     }
 
     if message.contains("permission request returned HTTP 403") {
