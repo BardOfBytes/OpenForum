@@ -10,6 +10,11 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import {
+  DEFAULT_POST_LOGIN_REDIRECT,
+  ROUTES,
+  normalizePostLoginRedirect,
+} from "@/lib/routes";
 import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 
@@ -25,7 +30,9 @@ type OAuthProvider = "google" | "github";
  */
 function LoginForm() {
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") ?? "/feed";
+  const redirect = normalizePostLoginRedirect(
+    searchParams.get("redirect") ?? DEFAULT_POST_LOGIN_REDIRECT
+  );
   const [loading, setLoading] = useState<OAuthProvider | null>(null);
 
   /**
@@ -42,7 +49,7 @@ function LoginForm() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirect)}`,
+          redirectTo: `${window.location.origin}${ROUTES.auth.callback}?next=${encodeURIComponent(redirect)}`,
           queryParams:
             provider === "google"
               ? { hd: "csvtu.ac.in" } // Hint Google to show only csvtu.ac.in accounts

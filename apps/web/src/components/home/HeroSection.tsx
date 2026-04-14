@@ -16,6 +16,7 @@
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
+import { ROUTES } from "@/lib/routes";
 
 /** Cubic-bezier easing for smooth editorial transitions. */
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
@@ -134,7 +135,7 @@ export function HeroSection() {
           variants={itemVariants}
           className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4"
         >
-          <Link href="/feed">
+          <Link href={ROUTES.articles}>
             <Button variant="primary" size="lg">
               Start Reading
               <svg
@@ -149,7 +150,7 @@ export function HeroSection() {
               </svg>
             </Button>
           </Link>
-          <Link href="/login">
+          <Link href={ROUTES.login}>
             <Button variant="secondary" size="lg">
               Write for Us
             </Button>

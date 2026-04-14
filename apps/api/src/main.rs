@@ -1,34 +1,20 @@
-//! OpenForum API — Rust AXUM backend
-//!
-//! Student-only editorial & journalism platform for UTD CSVTU.
-//! This is the REST API server that handles articles, users, and image uploads.
+//! OpenForum API binary entrypoint.
 
-use axum::{routing::get, Json, Router};
-use serde::Serialize;
-use tower_http::cors::{Any, CorsLayer};
-use tower_http::trace::TraceLayer;
+use std::sync::Arc;
+
+use anyhow::Context;
+use openforum_api::{
+    build_app,
+    config::AppConfig,
+    services::{cache::CacheService, drive::DriveService, sheets::SheetsService},
+    state::AppState,
+};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-/// Health check response body.
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    version: &'static str,
-}
-
-/// Health check endpoint — `GET /health`
-///
-/// Returns a JSON payload confirming the API is running.
-async fn health_check() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        version: env!("CARGO_PKG_VERSION"),
-    })
-}
-
 #[tokio::main]
-async fn main() {
-    // Initialize structured logging (reads RUST_LOG env var)
+async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -37,29 +23,43 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Load .env file (optional, for local dev)
-    dotenvy::dotenv().ok();
+    let config =
+        AppConfig::from_env().context("API startup failed: invalid or missing configuration")?;
+    tracing::info!(
+        port = config.port,
+        frontend = %config.frontend_url,
+        "Configuration loaded"
+    );
 
-    // CORS — permissive in dev, restricted in production
-    // TODO: Replace `Any` with the actual frontend origin in production
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    let cache = CacheService::new(config.redis_url.clone(), config.redis_token.clone())
+        .context("Failed to initialize Redis cache service")?;
+    let sheets = SheetsService::new(
+        config.google_sheets_id.clone(),
+        config.google_service_account_json.clone(),
+        cache,
+    )
+    .context("Failed to initialize Google Sheets service")?;
+    let drive = DriveService::new(
+        config.google_drive_folder_id.clone(),
+        config.google_service_account_json.clone(),
+    )
+    .context("Failed to initialize Google Drive service")?;
 
-    // Build the application router
-    let app = Router::new()
-        .route("/health", get(health_check))
-        // TODO: Add API v1 routes here
-        // .nest("/api/v1", api_v1_router())
-        .layer(cors)
-        .layer(TraceLayer::new_for_http());
+    let state = AppState {
+        sheets: Arc::new(sheets),
+        drive: Arc::new(drive),
+    };
+    let app = build_app(&config, state);
 
-    let port = std::env::var("PORT").unwrap_or_else(|_| "3001".to_string());
-    let addr = format!("0.0.0.0:{port}");
+    let addr = format!("0.0.0.0:{}", config.port);
+    tracing::info!("OpenForum API listening on {addr}");
 
-    tracing::info!("🚀 OpenForum API listening on {addr}");
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .with_context(|| format!("Failed to bind TCP listener on {addr}"))?;
+    axum::serve(listener, app)
+        .await
+        .context("Axum server failed")?;
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    Ok(())
 }

@@ -12,6 +12,7 @@
  */
 
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 /** Map of error reason codes to user-facing messages. */
 const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
@@ -101,13 +102,13 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
         {/* Action buttons */}
         <div className="flex flex-col gap-3">
           <Link
-            href="/login"
+            href={ROUTES.login}
             className="inline-flex items-center justify-center rounded-lg bg-[#1a1917] px-6 py-3 text-sm font-medium text-[#f6f5f0] transition-colors hover:bg-[#2a2927]"
           >
             Try Again
           </Link>
           <Link
-            href="/"
+            href={ROUTES.home}
             className="inline-flex items-center justify-center rounded-lg border border-[#d1cfc8] bg-transparent px-6 py-3 text-sm font-medium text-[#1a1917] transition-colors hover:bg-[#e8e6e0]"
           >
             Back to Home

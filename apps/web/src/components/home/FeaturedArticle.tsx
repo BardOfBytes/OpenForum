@@ -12,6 +12,7 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
@@ -58,7 +59,7 @@ export function FeaturedArticle({ article }: FeaturedArticleProps) {
       transition={{ duration: 0.7, ease: EASE }}
     >
       <Link
-        href={`/article/${article.slug}`}
+        href={ROUTES.article.detail(article.slug)}
         className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-4 focus-visible:ring-offset-bg rounded-xl"
         aria-label={`Read featured: "${article.title}"`}
       >

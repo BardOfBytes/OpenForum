@@ -11,6 +11,8 @@
     "build:web": "pnpm --filter @openforum/web build",
     "build:api": "cd apps/api && cargo build --release",
     "lint": "pnpm --filter @openforum/web lint",
+    "test:web": "pnpm --filter @openforum/web run test:run",
+    "test:api": "cd apps/api && cargo test",
     "typecheck": "pnpm --filter @openforum/web typecheck",
     "clean": "pnpm --filter @openforum/web clean && cd apps/api && cargo clean"
   },

@@ -33,6 +33,7 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 /* ─────────────────────────────────────────────────────────────
    TYPES
@@ -142,7 +143,7 @@ export function ArticleCard({
       className="group"
     >
       <Link
-        href={`/article/${slug}`}
+        href={ROUTES.article.detail(slug)}
         className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-4 focus-visible:ring-offset-bg rounded-xl"
         aria-label={`Read "${title}" by ${author.name}`}
       >

@@ -20,105 +20,27 @@ import { HeroSection } from "@/components/home/HeroSection";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import { CategoriesBar } from "@/components/home/CategoriesBar";
 import { FeaturedArticle } from "@/components/home/FeaturedArticle";
+import { getArticles, type ArticleListItem } from "@/lib/api/articles";
+import { ROUTES } from "@/lib/routes";
 
 /* ─────────────────────────────────────────────────────────────
    DATA TYPES
    ───────────────────────────────────────────────────────────── */
 
-interface Article {
-  title: string;
-  excerpt: string;
-  slug: string;
-  coverImageUrl: string | null;
-  category: { name: string; color: string };
-  author: { name: string; avatarUrl: string | null };
-  readTimeMinutes: number;
-  publishedAt: string;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   DATA FETCHING
-   ───────────────────────────────────────────────────────────── */
-
-/**
- * TODO: Connect to AXUM API — replace with `fetch(`${API_URL}/api/v1/articles`)`
- *
- * Returns typed mock data for development.
- * Each article uses realistic content that mirrors what
- * an actual CSVTU student publication would publish.
- */
-async function getLatestArticles(): Promise<Article[]> {
-  // Simulated async delay to mimic API fetch
-  await new Promise((r) => setTimeout(r, 0));
-
-  return [
-    {
-      title: "Inside CSVTU's New AI Research Lab: What It Means for Students",
-      excerpt:
-        "The university just unveiled a ₹2 crore AI research laboratory. We talked to the faculty leading the initiative and students already using it to build their final-year projects.",
-      slug: "csvtu-ai-research-lab",
-      coverImageUrl: null, // TODO: Replace with actual cover images
-      category: { name: "Tech & AI", color: "#3d7cc9" },
-      author: { name: "Arjun Patel", avatarUrl: null },
-      readTimeMinutes: 8,
-      publishedAt: "2026-04-09T10:00:00Z",
-    },
-    {
-      title: "The Hostel Fee Hike: A Breakdown of Where Your Money Goes",
-      excerpt:
-        "Hostel fees rose 18% this semester. We obtained the budget documents and mapped every rupee to understand what changed — and what students can do about it.",
-      slug: "hostel-fee-hike-breakdown",
-      coverImageUrl: null,
-      category: { name: "Investigations", color: "#c4392b" },
-      author: { name: "Sneha Verma", avatarUrl: null },
-      readTimeMinutes: 12,
-      publishedAt: "2026-04-08T14:30:00Z",
-    },
-    {
-      title: "From CSVTU to Google: Rahul's Placement Journey",
-      excerpt:
-        "CSE final-year Rahul Sharma shares his 6-month preparation strategy, the mistakes he made, and the one interview question that almost stumped him.",
-      slug: "csvtu-to-google-placement",
-      coverImageUrl: null,
-      category: { name: "Career Paths", color: "#9b59a6" },
-      author: { name: "Rahul Sharma", avatarUrl: null },
-      readTimeMinutes: 6,
-      publishedAt: "2026-04-07T09:00:00Z",
-    },
-    {
-      title: "Why Student Elections Need Electoral Reform",
-      excerpt:
-        "Anonymous voting, manifesto vetting, and spending caps — an editorial on what CSVTU can learn from campus democracies at IITs and NITs.",
-      slug: "student-elections-reform",
-      coverImageUrl: null,
-      category: { name: "Editorials", color: "#8b5e3c" },
-      author: { name: "Priya Sahu", avatarUrl: null },
-      readTimeMinutes: 5,
-      publishedAt: "2026-04-06T16:00:00Z",
-    },
-    {
-      title: "My Summer at Razorpay: An Intern's Diary",
-      excerpt:
-        "Ten weeks in Bangalore, building payment infrastructure used by millions. Here's what no one tells you about fintech internships — the good, the exhausting, and the dal makhani.",
-      slug: "summer-internship-razorpay",
-      coverImageUrl: null,
-      category: { name: "Internship Diaries", color: "#3d8b5f" },
-      author: { name: "Kavita Kushwaha", avatarUrl: null },
-      readTimeMinutes: 7,
-      publishedAt: "2026-04-05T11:00:00Z",
-    },
-    {
-      title: "Reverie 2026: The Best Cultural Fest Moments",
-      excerpt:
-        "From the surprise headliner to the robotics battle that went viral — a photo essay capturing the energy of this year's Reverie festival.",
-      slug: "reverie-2026-cultural-fest",
-      coverImageUrl: null,
-      category: { name: "Campus News", color: "#d4613c" },
-      author: { name: "Ankit Mishra", avatarUrl: null },
-      readTimeMinutes: 4,
-      publishedAt: "2026-04-04T08:00:00Z",
-    },
-  ];
+async function getHomepageArticles(): Promise<{
+  articles: ArticleListItem[];
+  errorMessage: string | null;
+}> {
+  try {
+    const articles = await getArticles();
+    return { articles: articles.slice(0, 6), errorMessage: null };
+  } catch (error) {
+    console.error("[home] Failed to load homepage articles:", error);
+    return {
+      articles: [],
+      errorMessage: "Latest stories are temporarily unavailable.",
+    };
+  }
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -126,7 +48,7 @@ async function getLatestArticles(): Promise<Article[]> {
    ───────────────────────────────────────────────────────────── */
 
 export default async function HomePage() {
-  const articles = await getLatestArticles();
+  const { articles, errorMessage } = await getHomepageArticles();
   const featured = articles[0];
   const latest = articles.slice(1);
 
@@ -152,7 +74,15 @@ export default async function HomePage() {
               <div className="h-px flex-1 bg-border" aria-hidden="true" />
             </div>
 
-            <FeaturedArticle article={featured} />
+            {featured ? (
+              <FeaturedArticle article={featured} />
+            ) : (
+              <div className="rounded-xl border border-border-light bg-bg-elevated p-8 text-center">
+                <p className="font-body text-text-secondary">
+                  {errorMessage ?? "No featured story yet."}
+                </p>
+              </div>
+            )}
           </div>
         </section>
 
@@ -170,7 +100,7 @@ export default async function HomePage() {
                 </h2>
               </div>
               <Link
-                href="/feed"
+                href={ROUTES.articles}
                 className="hidden sm:inline-flex items-center gap-1.5 text-sm font-medium font-body text-accent hover:text-accent-hover transition-colors duration-fast group"
               >
                 View all
@@ -187,12 +117,20 @@ export default async function HomePage() {
               </Link>
             </div>
 
-            <ArticleGrid articles={latest} />
+            {latest.length > 0 ? (
+              <ArticleGrid articles={latest} />
+            ) : (
+              <div className="rounded-xl border border-border-light bg-bg-elevated p-8 text-center">
+                <p className="font-body text-text-secondary">
+                  {errorMessage ?? "No articles available right now."}
+                </p>
+              </div>
+            )}
 
             {/* Mobile "View all" link */}
             <div className="mt-8 text-center sm:hidden">
               <Link
-                href="/feed"
+                href={ROUTES.articles}
                 className="inline-flex items-center gap-1.5 text-sm font-medium font-body text-accent hover:text-accent-hover transition-colors"
               >
                 View all articles →
@@ -221,7 +159,7 @@ export default async function HomePage() {
               adds to the conversation.
             </p>
             <Link
-              href="/login"
+              href={ROUTES.login}
               className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-accent text-text-inverse font-medium text-sm hover:bg-accent-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
             >
               Start Writing Today

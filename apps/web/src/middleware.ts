@@ -16,12 +16,13 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { DEFAULT_POST_LOGIN_REDIRECT, ROUTES } from "@/lib/routes";
 
 /** Routes that require authentication. */
-const PROTECTED_ROUTES = ["/feed", "/article/new", "/profile", "/search"];
+const PROTECTED_ROUTES = [ROUTES.write, "/profile", "/search"];
 
 /** Routes that authenticated users should be redirected away from. */
-const AUTH_ROUTES = ["/login", "/auth"];
+const AUTH_ROUTES = [ROUTES.login, "/auth"];
 
 /**
  * Determines if a given pathname starts with any of the specified prefixes.
@@ -89,7 +90,7 @@ async function updateSession(request: NextRequest) {
   // Redirect unauthenticated users away from protected routes
   if (!user && matchesRoute(pathname, PROTECTED_ROUTES)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = ROUTES.login;
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
@@ -97,7 +98,7 @@ async function updateSession(request: NextRequest) {
   // Redirect authenticated users away from auth pages (login, etc.)
   if (user && matchesRoute(pathname, AUTH_ROUTES)) {
     const url = request.nextUrl.clone();
-    url.pathname = "/feed";
+    url.pathname = DEFAULT_POST_LOGIN_REDIRECT;
     return NextResponse.redirect(url);
   }
 

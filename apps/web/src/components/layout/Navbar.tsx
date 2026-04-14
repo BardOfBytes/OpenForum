@@ -25,6 +25,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { ROUTES } from "@/lib/routes";
 import type { User } from "@supabase/supabase-js";
 
 /* ─────────────────────────────────────────────────────────────
@@ -36,7 +37,7 @@ const SCROLL_THRESHOLD = 32;
 
 /** Main navigation links. */
 const NAV_LINKS = [
-  { label: "Feed", href: "/feed" },
+  { label: "Articles", href: ROUTES.articles },
   { label: "Categories", href: "/category" },
   { label: "About", href: "/about" },
 ] as const;
@@ -163,7 +164,7 @@ export function Navbar() {
     try {
       const supabase = createClient();
       await supabase.auth.signOut();
-      window.location.href = "/";
+      window.location.href = ROUTES.home;
     } catch (err) {
       console.error("[navbar] Sign out failed:", err);
     }
@@ -171,7 +172,9 @@ export function Navbar() {
 
   /** Check if a nav link is currently active. */
   function isActive(href: string): boolean {
-    if (href === "/feed") return pathname === "/feed" || pathname.startsWith("/article/");
+    if (href === ROUTES.articles) {
+      return pathname === ROUTES.articles || pathname.startsWith(`${ROUTES.articles}/`);
+    }
     return pathname.startsWith(href);
   }
 
@@ -196,7 +199,7 @@ export function Navbar() {
         >
           {/* ── Logo ──────────────────────────────────────── */}
           <Link
-            href="/"
+            href={ROUTES.home}
             className="flex items-center gap-2 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md pr-1"
             aria-label="OpenForum home"
           >
@@ -240,7 +243,7 @@ export function Navbar() {
                   /* Authenticated: avatar + dropdown */
                   <div className="hidden md:flex items-center gap-3">
                     <Link
-                      href="/article/new"
+                      href={ROUTES.write}
                       className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium font-body bg-accent text-text-inverse hover:bg-accent-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                     >
                       <svg
@@ -299,7 +302,7 @@ export function Navbar() {
                 ) : (
                   /* Not authenticated: sign-in link */
                   <Link
-                    href="/login"
+                    href={ROUTES.login}
                     className="hidden md:inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium font-body border border-border text-text hover:bg-surface hover:border-text-tertiary transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                   >
                     Sign in
@@ -430,7 +433,7 @@ export function Navbar() {
                     </div>
 
                     <Link
-                      href="/article/new"
+                      href={ROUTES.write}
                       className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-accent text-text-inverse font-medium text-sm hover:bg-accent-hover transition-colors"
                       onClick={() => setMobileOpen(false)}
                     >
@@ -449,7 +452,7 @@ export function Navbar() {
                   </div>
                 ) : (
                   <Link
-                    href="/login"
+                    href={ROUTES.login}
                     className="flex items-center justify-center px-4 py-3 rounded-xl bg-accent text-text-inverse font-medium text-sm hover:bg-accent-hover transition-colors"
                     onClick={() => setMobileOpen(false)}
                   >

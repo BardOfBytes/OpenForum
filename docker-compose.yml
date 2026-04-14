@@ -1,38 +1,23 @@
-# ============================================================
-# OpenForum — Docker Compose (local development)
-# ============================================================
-# Usage:
-#   docker compose up          — start API + Redis
-#   docker compose up --build  — rebuild API image then start
-# ============================================================
+version: "3.8"
 
 services:
-  # -----------------------------------------------------------
-  # Rust AXUM API
-  # -----------------------------------------------------------
   api:
     build:
       context: ./apps/api
       dockerfile: Dockerfile
     ports:
-      - "3001:3001"
+      - "8080:8080"
     env_file:
-      - ./apps/api/.env
+      - .env
+    environment:
+      - PORT=8080
+      - NEXT_PUBLIC_FRONTEND_URL=http://localhost:3000
+      - UPSTASH_REDIS_URL=redis://redis:6379
+      - UPSTASH_REDIS_TOKEN=local-dev-token
     depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
+      - redis
 
-  # -----------------------------------------------------------
-  # Redis (local stand-in for Upstash in dev)
-  # -----------------------------------------------------------
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped

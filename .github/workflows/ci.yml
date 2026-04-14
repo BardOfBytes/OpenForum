@@ -1,0 +1,126 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint-frontend:
+    name: Lint Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.4
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Lint Rules
+        run: pnpm --filter @openforum/web lint
+
+      - name: Typecheck 
+        run: pnpm --filter @openforum/web typecheck
+
+      - name: Web Tests
+        run: pnpm --filter @openforum/web run test:run
+
+  lint-backend:
+    name: Lint Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api -> target
+
+      - name: Cargo Format
+        working-directory: ./apps/api
+        run: cargo fmt --check
+
+      - name: Cargo Clippy
+        working-directory: ./apps/api
+        run: cargo clippy -- -D warnings
+
+  test-backend:
+    name: Test Backend (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/api -> target
+
+      - name: Cargo Test
+        working-directory: ./apps/api
+        run: cargo test
+
+  deploy-preview:
+    name: Vercel Preview Deploy
+    if: github.event_name == 'pull_request'
+    needs: [lint-frontend, lint-backend, test-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        
+      - name: Trigger Vercel Preview
+        uses: amondnet/vercel-action@v20
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-production:
+    name: Production Deployment Hook
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [lint-frontend, lint-backend, test-backend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        run: npm install -g pnpm@9.15.4
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Deploy Frontend (Vercel)
+        run: npx vercel deploy --prod --token ${{ secrets.VERCEL_TOKEN }} --yes
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy Backend (Render)
+        run: |
+          if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
+            echo "Error: RENDER_DEPLOY_HOOK_URL secret is not set!"
+            exit 1
+          fi
+          echo "Triggering Render rebuild via Webhook..."
+          curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"

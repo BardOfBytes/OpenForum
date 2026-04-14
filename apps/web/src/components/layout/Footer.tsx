@@ -11,6 +11,7 @@
  */
 
 import Link from "next/link";
+import { ROUTES } from "@/lib/routes";
 
 /** Social link data. */
 const SOCIAL_LINKS = [
@@ -52,7 +53,7 @@ const SOCIAL_LINKS = [
 ];
 
 const FOOTER_NAV = [
-  { label: "Feed", href: "/feed" },
+  { label: "Articles", href: ROUTES.articles },
   { label: "About", href: "/about" },
   { label: "Guidelines", href: "/guidelines" },
   { label: "Privacy", href: "/privacy" },
@@ -67,7 +68,7 @@ export function Footer() {
           {/* ── Brand Column ─────────────────────────────── */}
           <div className="md:col-span-5">
             {/* Logo */}
-            <Link href="/" className="inline-flex items-center gap-2 group mb-4">
+            <Link href={ROUTES.home} className="inline-flex items-center gap-2 group mb-4">
               <div
                 className="w-2 h-6 rounded-full bg-accent transition-transform duration-normal group-hover:scale-y-110"
                 aria-hidden="true"

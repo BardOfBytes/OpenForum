@@ -9,7 +9,7 @@
  *    with `@csvtu.ac.in`. If not, signs the user out and redirects
  *    to `/auth/error?reason=domain`.
  * 3. On success, creates/updates the user's profile in the `profiles`
- *    table and redirects to the originally requested page (or `/feed`).
+ *    table and redirects to the originally requested page (or `/articles`).
  *
  * @see https://supabase.com/docs/guides/auth/server-side/nextjs
  */
@@ -17,6 +17,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  DEFAULT_POST_LOGIN_REDIRECT,
+  ROUTES,
+  normalizePostLoginRedirect,
+} from "@/lib/routes";
 
 /** The only allowed email domain for OpenForum registration. */
 const ALLOWED_DOMAIN = "@csvtu.ac.in";
@@ -24,12 +29,14 @@ const ALLOWED_DOMAIN = "@csvtu.ac.in";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/feed";
+  const next = normalizePostLoginRedirect(
+    searchParams.get("next") ?? DEFAULT_POST_LOGIN_REDIRECT
+  );
 
   if (!code) {
     // No auth code present — redirect to error
     return NextResponse.redirect(
-      `${origin}/auth/error?reason=missing_code`
+      `${origin}${ROUTES.auth.error}?reason=missing_code`
     );
   }
 
@@ -59,7 +66,7 @@ export async function GET(request: NextRequest) {
   if (exchangeError) {
     console.error("[auth/callback] Code exchange failed:", exchangeError.message);
     return NextResponse.redirect(
-      `${origin}/auth/error?reason=exchange_failed`
+      `${origin}${ROUTES.auth.error}?reason=exchange_failed`
     );
   }
 
@@ -72,7 +79,7 @@ export async function GET(request: NextRequest) {
   if (userError || !user) {
     console.error("[auth/callback] Failed to get user:", userError?.message);
     return NextResponse.redirect(
-      `${origin}/auth/error?reason=user_fetch_failed`
+      `${origin}${ROUTES.auth.error}?reason=user_fetch_failed`
     );
   }
 
@@ -89,7 +96,7 @@ export async function GET(request: NextRequest) {
     await supabase.auth.signOut();
 
     return NextResponse.redirect(
-      `${origin}/auth/error?reason=domain`
+      `${origin}${ROUTES.auth.error}?reason=domain`
     );
   }
 
@@ -132,6 +139,6 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Redirect to the originally requested page (or /feed)
+  // Redirect to the originally requested page (or /articles)
   return NextResponse.redirect(`${origin}${next}`);
 }
