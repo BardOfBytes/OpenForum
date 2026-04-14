@@ -56,9 +56,9 @@ const FOOTER_NAV = [
   { label: "Articles", href: ROUTES.articles },
   { label: "Categories", href: ROUTES.categories },
   { label: "About", href: ROUTES.about },
-  { label: "Guidelines", href: "/guidelines" },
-  { label: "Privacy", href: "/privacy" },
-  { label: "Terms", href: "/terms" },
+  { label: "Guidelines", href: ROUTES.guidelines },
+  { label: "Privacy", href: ROUTES.privacy },
+  { label: "Terms", href: ROUTES.terms },
 ];
 
 export function Footer() {

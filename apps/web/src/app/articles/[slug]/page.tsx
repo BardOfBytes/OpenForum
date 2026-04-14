@@ -169,6 +169,30 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
                 <ArticleGrid articles={relatedArticles} />
               </section>
             )}
+
+            <section className="mt-12 rounded-2xl border border-border-light bg-surface p-7 md:p-8">
+              <h2 className="font-heading text-2xl font-semibold text-text tracking-tight mb-3">
+                Join The Conversation
+              </h2>
+              <p className="font-body text-text-secondary leading-relaxed mb-5">
+                Have a response, counterpoint, or original angle? Publish your own piece and keep
+                the discussion moving.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={ROUTES.write}
+                  className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
+                >
+                  Write your article
+                </Link>
+                <Link
+                  href={ROUTES.articles}
+                  className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
+                >
+                  Back to latest
+                </Link>
+              </div>
+            </section>
           </article>
         </main>
         <Footer />

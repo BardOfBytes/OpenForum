@@ -11,6 +11,9 @@ describe("route map normalization", () => {
     expect(ROUTES.articles).toBe("/articles");
     expect(ROUTES.categories).toBe("/categories");
     expect(ROUTES.about).toBe("/about");
+    expect(ROUTES.guidelines).toBe("/guidelines");
+    expect(ROUTES.privacy).toBe("/privacy");
+    expect(ROUTES.terms).toBe("/terms");
     expect(ROUTES.article.detail("hello-world")).toBe("/articles/hello-world");
     expect(ROUTES.category.detail("tech-ai")).toBe("/categories/tech-ai");
     expect(ROUTES.signup).toBe("/signup");

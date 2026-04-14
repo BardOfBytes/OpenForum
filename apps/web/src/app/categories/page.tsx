@@ -129,6 +129,32 @@ export default async function CategoriesPage() {
               })}
             </div>
           )}
+
+          <section className="mt-12 rounded-2xl border border-border-light bg-surface p-8 md:p-10">
+            <div className="max-w-2xl">
+              <h2 className="font-heading text-2xl md:text-3xl font-semibold text-text tracking-tight mb-3">
+                Pick a lane. Add your voice.
+              </h2>
+              <p className="font-body text-text-secondary leading-relaxed mb-6">
+                Choose the category that fits your idea and publish a story that moves the campus
+                conversation forward.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link
+                  href={ROUTES.write}
+                  className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
+                >
+                  Start writing
+                </Link>
+                <Link
+                  href={ROUTES.articles}
+                  className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
+                >
+                  View latest articles
+                </Link>
+              </div>
+            </div>
+          </section>
         </section>
       </main>
       <Footer />

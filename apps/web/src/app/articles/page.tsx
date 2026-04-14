@@ -34,6 +34,31 @@ export default async function ArticlesPage() {
                 </p>
               </div>
             )}
+
+            <section className="mt-12 rounded-2xl border border-border-light bg-surface p-8 md:p-10">
+              <div className="max-w-2xl">
+                <h2 className="font-heading text-2xl md:text-3xl font-semibold text-text tracking-tight mb-3">
+                  Have a story to tell?
+                </h2>
+                <p className="font-body text-text-secondary leading-relaxed mb-6">
+                  Turn your perspective into a published article and shape what your peers read next.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    href={ROUTES.write}
+                    className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
+                  >
+                    Write an article
+                  </Link>
+                  <Link
+                    href={ROUTES.categories}
+                    className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
+                  >
+                    Explore categories
+                  </Link>
+                </div>
+              </div>
+            </section>
           </section>
         </main>
         <Footer />

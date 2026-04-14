@@ -27,6 +27,21 @@ export default function AboutPage() {
             peers. We combine strong editorial standards with approachable storytelling so ideas can
             be discussed, challenged, and improved in public.
           </p>
+
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link
+              href={ROUTES.write}
+              className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
+            >
+              Write for OpenForum
+            </Link>
+            <Link
+              href={ROUTES.guidelines}
+              className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
+            >
+              Read contributor guidelines
+            </Link>
+          </div>
         </section>
 
         <section className="container-editorial grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 mb-14 md:mb-20">

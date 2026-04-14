@@ -7,6 +7,9 @@ export const ROUTES = {
   categories: "/categories",
   categoryLegacy: "/category",
   about: "/about",
+  guidelines: "/guidelines",
+  privacy: "/privacy",
+  terms: "/terms",
   feedLegacy: "/feed",
   articleNewLegacy: "/article/new",
   auth: {
