@@ -198,16 +198,25 @@ impl DriveService {
             "mimeType": mime_type,
         });
 
-        let create_response: CreateFileResponse = self
+        let create_response = self
             .client
             .post("https://www.googleapis.com/drive/v3/files?fields=id")
             .bearer_auth(&token)
             .json(&metadata)
             .send()
             .await
-            .context("Google Drive create-file request failed")?
-            .error_for_status()
-            .context("Google Drive create-file returned non-success status")?
+            .context("Google Drive create-file request failed")?;
+
+        if !create_response.status().is_success() {
+            let status = create_response.status();
+            let error_body = create_response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Drive create-file returned HTTP {status}: {error_body}");
+        }
+
+        let create_response: CreateFileResponse = create_response
             .json()
             .await
             .context("Failed to parse Google Drive create-file response")?;
@@ -216,16 +225,24 @@ impl DriveService {
             "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media",
             create_response.id
         );
-        self.client
+        let upload_response = self
+            .client
             .patch(&upload_url)
             .bearer_auth(&token)
             .header("Content-Type", mime_type)
             .body(data.to_vec())
             .send()
             .await
-            .context("Google Drive media upload request failed")?
-            .error_for_status()
-            .context("Google Drive media upload returned non-success status")?;
+            .context("Google Drive media upload request failed")?;
+
+        if !upload_response.status().is_success() {
+            let status = upload_response.status();
+            let error_body = upload_response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Drive media upload returned HTTP {status}: {error_body}");
+        }
 
         let permissions_url = format!(
             "https://www.googleapis.com/drive/v3/files/{}/permissions",
@@ -235,15 +252,23 @@ impl DriveService {
             "role": "reader",
             "type": "anyone",
         });
-        self.client
+        let permissions_response = self
+            .client
             .post(&permissions_url)
             .bearer_auth(&token)
             .json(&permissions_body)
             .send()
             .await
-            .context("Google Drive permission request failed")?
-            .error_for_status()
-            .context("Google Drive permission request returned non-success status")?;
+            .context("Google Drive permission request failed")?;
+
+        if !permissions_response.status().is_success() {
+            let status = permissions_response.status();
+            let error_body = permissions_response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Drive permission request returned HTTP {status}: {error_body}");
+        }
 
         Ok(UploadResult {
             public_url: format!(

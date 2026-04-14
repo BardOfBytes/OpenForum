@@ -454,15 +454,23 @@ impl SheetsService {
             values: vec![row],
         };
 
-        self.client
+        let response = self
+            .client
             .post(&url)
             .bearer_auth(token)
             .json(&body)
             .send()
             .await
-            .context("Google Sheets append request failed")?
-            .error_for_status()
-            .context("Google Sheets append returned non-success status")?;
+            .context("Google Sheets append request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Sheets append returned HTTP {status}: {error_body}");
+        }
 
         let _ = self.cache.invalidate_articles().await;
         Ok(article)

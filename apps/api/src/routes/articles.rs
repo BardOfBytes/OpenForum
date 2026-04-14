@@ -149,7 +149,9 @@ async fn create_article(
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
                     error: "article_create_failed",
-                    message: "Unable to create article in storage backend".to_string(),
+                    message:
+                        "Unable to create article in storage backend. Verify Google Sheets access and posts sheet setup."
+                            .to_string(),
                 }),
             )
         })?;
