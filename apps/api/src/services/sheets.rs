@@ -237,15 +237,24 @@ impl SheetsService {
             self.spreadsheet_id, range
         );
 
-        let response: SheetValueRange = self
+        let response = self
             .client
             .get(&url)
             .bearer_auth(token)
             .send()
             .await
-            .context("Google Sheets read request failed")?
-            .error_for_status()
-            .context("Google Sheets read returned non-success status")?
+            .context("Google Sheets read request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Sheets read returned HTTP {status}: {error_body}");
+        }
+
+        let response: SheetValueRange = response
             .json()
             .await
             .context("Failed to decode Google Sheets read response")?;
