@@ -14,6 +14,25 @@ use uuid::Uuid;
 const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 /// Google Sheets API scope.
 const SCOPE_SPREADSHEETS: &str = "https://www.googleapis.com/auth/spreadsheets";
+const POSTS_SHEET_TITLE: &str = "posts";
+const POSTS_HEADER_RANGE: &str = "posts!A1:L1";
+const POSTS_LIST_RANGE: &str = "posts!A2:L";
+const POSTS_LOOKUP_RANGE: &str = "posts!A:L";
+const POSTS_APPEND_RANGE: &str = "posts!A:A";
+const POSTS_HEADER_ROW: [&str; 12] = [
+    "id",
+    "slug",
+    "title",
+    "excerpt",
+    "content_gdoc_id",
+    "author_id",
+    "category",
+    "tags",
+    "status",
+    "created_at",
+    "updated_at",
+    "views",
+];
 
 #[derive(Deserialize, Debug)]
 struct ServiceAccountJson {
@@ -50,6 +69,7 @@ pub struct SheetsService {
     service_email: String,
     private_key: String,
     cached_token: Arc<RwLock<Option<CachedToken>>>,
+    schema_initialized: Arc<RwLock<bool>>,
     pub cache: crate::services::cache::CacheService,
     mock_posts: Option<Arc<RwLock<Vec<Article>>>>,
 }
@@ -66,6 +86,24 @@ struct SheetValueUpdate {
     #[serde(rename = "majorDimension")]
     major_dimension: String,
     values: Vec<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+struct SpreadsheetMetadataResponse {
+    #[serde(default)]
+    sheets: Vec<SpreadsheetSheetEntry>,
+}
+
+#[derive(Deserialize)]
+struct SpreadsheetSheetEntry {
+    #[serde(default)]
+    properties: SpreadsheetSheetProperties,
+}
+
+#[derive(Deserialize, Default)]
+struct SpreadsheetSheetProperties {
+    #[serde(default)]
+    title: String,
 }
 
 impl SheetsService {
@@ -89,6 +127,7 @@ impl SheetsService {
             service_email: sa.client_email,
             private_key: sa.private_key,
             cached_token: Arc::new(RwLock::new(None)),
+            schema_initialized: Arc::new(RwLock::new(false)),
             cache,
             mock_posts: None,
         })
@@ -107,6 +146,7 @@ impl SheetsService {
             service_email: "test@example.com".to_string(),
             private_key: "test".to_string(),
             cached_token: Arc::new(RwLock::new(None)),
+            schema_initialized: Arc::new(RwLock::new(true)),
             cache,
             mock_posts: Some(Arc::new(RwLock::new(seed_posts))),
         }
@@ -170,6 +210,195 @@ impl SheetsService {
         Ok(response.access_token)
     }
 
+    async fn fetch_sheet_titles(&self, token: &str) -> Result<Vec<String>> {
+        let url = format!(
+            "https://sheets.googleapis.com/v4/spreadsheets/{}?fields=sheets(properties(title))",
+            self.spreadsheet_id
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("Google Sheets metadata request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Sheets metadata returned HTTP {status}: {error_body}");
+        }
+
+        let metadata: SpreadsheetMetadataResponse = response
+            .json()
+            .await
+            .context("Failed to decode Google Sheets metadata response")?;
+
+        Ok(metadata
+            .sheets
+            .into_iter()
+            .filter_map(|sheet| {
+                let title = sheet.properties.title.trim().to_string();
+                if title.is_empty() { None } else { Some(title) }
+            })
+            .collect())
+    }
+
+    async fn create_posts_sheet(&self, token: &str) -> Result<()> {
+        let url = format!(
+            "https://sheets.googleapis.com/v4/spreadsheets/{}:batchUpdate",
+            self.spreadsheet_id
+        );
+
+        let body = serde_json::json!({
+            "requests": [
+                {
+                    "addSheet": {
+                        "properties": {
+                            "title": POSTS_SHEET_TITLE
+                        }
+                    }
+                }
+            ]
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .context("Google Sheets add-sheet request failed")?;
+
+        if response.status().is_success() {
+            return Ok(());
+        }
+
+        let status = response.status();
+        let error_body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unavailable>".to_string());
+
+        if status == reqwest::StatusCode::BAD_REQUEST
+            && error_body.to_ascii_lowercase().contains("already exists")
+        {
+            return Ok(());
+        }
+
+        bail!("Google Sheets add-sheet returned HTTP {status}: {error_body}");
+    }
+
+    async fn ensure_posts_header_row(&self, token: &str) -> Result<()> {
+        let url = format!(
+            "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}",
+            self.spreadsheet_id, POSTS_HEADER_RANGE
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(token)
+            .send()
+            .await
+            .context("Google Sheets header read request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Sheets header read returned HTTP {status}: {error_body}");
+        }
+
+        let range: SheetValueRange = response
+            .json()
+            .await
+            .context("Failed to decode Google Sheets header read response")?;
+
+        let header_missing = match range.values.first() {
+            Some(row) => row.iter().all(|cell| cell.trim().is_empty()),
+            None => true,
+        };
+
+        if !header_missing {
+            return Ok(());
+        }
+
+        let update_url = format!(
+            "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}?valueInputOption=RAW",
+            self.spreadsheet_id, POSTS_HEADER_RANGE
+        );
+
+        let body = SheetValueUpdate {
+            range: POSTS_HEADER_RANGE.to_string(),
+            major_dimension: "ROWS".to_string(),
+            values: vec![
+                POSTS_HEADER_ROW
+                    .iter()
+                    .map(|value| value.to_string())
+                    .collect(),
+            ],
+        };
+
+        let response = self
+            .client
+            .put(&update_url)
+            .bearer_auth(token)
+            .json(&body)
+            .send()
+            .await
+            .context("Google Sheets header write request failed")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "<unavailable>".to_string());
+            bail!("Google Sheets header write returned HTTP {status}: {error_body}");
+        }
+
+        Ok(())
+    }
+
+    async fn ensure_posts_sheet_schema(&self) -> Result<()> {
+        if self.mock_posts.is_some() {
+            return Ok(());
+        }
+
+        {
+            let guard = self.schema_initialized.read().await;
+            if *guard {
+                return Ok(());
+            }
+        }
+
+        let mut guard = self.schema_initialized.write().await;
+        if *guard {
+            return Ok(());
+        }
+
+        let token = self.get_access_token().await?;
+        let sheet_titles = self.fetch_sheet_titles(&token).await?;
+        if !sheet_titles
+            .iter()
+            .any(|title| title.eq_ignore_ascii_case(POSTS_SHEET_TITLE))
+        {
+            self.create_posts_sheet(&token).await?;
+        }
+
+        self.ensure_posts_header_row(&token).await?;
+        *guard = true;
+        Ok(())
+    }
+
     fn row_to_article_preview(row: &[String]) -> Option<ArticlePreview> {
         if row.len() < 12 {
             return None;
@@ -231,6 +460,10 @@ impl SheetsService {
     }
 
     async fn read_range(&self, range: &str) -> Result<Vec<Vec<String>>> {
+        if range.to_ascii_lowercase().starts_with("posts!") {
+            self.ensure_posts_sheet_schema().await?;
+        }
+
         let token = self.get_access_token().await?;
         let url = format!(
             "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}",
@@ -292,7 +525,7 @@ impl SheetsService {
             return Ok(cached);
         }
 
-        let rows = self.read_range("posts!A2:L").await?;
+        let rows = self.read_range(POSTS_LIST_RANGE).await?;
         let mut previews: Vec<ArticlePreview> = rows
             .iter()
             .filter_map(|row| Self::row_to_article_preview(row))
@@ -337,7 +570,7 @@ impl SheetsService {
             return Ok(filtered.len() as u32);
         }
 
-        let rows = self.read_range("posts!A2:L").await?;
+        let rows = self.read_range(POSTS_LIST_RANGE).await?;
         let mut previews: Vec<ArticlePreview> = rows
             .iter()
             .filter_map(|row| Self::row_to_article_preview(row))
@@ -364,7 +597,7 @@ impl SheetsService {
             return Ok(Some(cached));
         }
 
-        let rows = self.read_range("posts!A2:L").await?;
+        let rows = self.read_range(POSTS_LIST_RANGE).await?;
         for row in rows {
             if row.len() >= 2
                 && row[1] == slug
@@ -436,10 +669,12 @@ impl SheetsService {
             return Ok(article);
         }
 
+        self.ensure_posts_sheet_schema().await?;
+
         let token = self.get_access_token().await?;
         let url = format!(
-            "https://sheets.googleapis.com/v4/spreadsheets/{}/values/posts!A:A:append?valueInputOption=USER_ENTERED",
-            self.spreadsheet_id
+            "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}:append?valueInputOption=USER_ENTERED",
+            self.spreadsheet_id, POSTS_APPEND_RANGE
         );
 
         let row = vec![
@@ -458,7 +693,7 @@ impl SheetsService {
         ];
 
         let body = SheetValueUpdate {
-            range: "posts!A:A".to_string(),
+            range: POSTS_APPEND_RANGE.to_string(),
             major_dimension: "ROWS".to_string(),
             values: vec![row],
         };
@@ -496,7 +731,7 @@ impl SheetsService {
             bail!("Post with slug '{}' not found in test store", slug);
         }
 
-        let rows = self.read_range("posts!A:L").await?;
+        let rows = self.read_range(POSTS_LOOKUP_RANGE).await?;
         let mut target_row_idx = None;
         let mut current_views = 0;
 

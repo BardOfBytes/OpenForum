@@ -2,7 +2,7 @@
 
 use axum::{
     Json, Router,
-    extract::{Multipart, State},
+    extract::{DefaultBodyLimit, Multipart, State},
     http::StatusCode,
     routing::post,
 };
@@ -139,5 +139,7 @@ async fn upload_image(
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new().route("/upload", post(upload_image))
+    Router::new()
+        .route("/upload", post(upload_image))
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024))
 }
