@@ -36,7 +36,7 @@ async fn main() -> anyhow::Result<()> {
     let sheets = SheetsService::new(
         config.google_sheets_id.clone(),
         config.google_service_account_json.clone(),
-        cache,
+        cache.clone(),
     )
     .context("Failed to initialize Google Sheets service")?;
     let drive = DriveService::new(
@@ -48,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
     let state = AppState {
         sheets: Arc::new(sheets),
         drive: Arc::new(drive),
+        cache: Arc::new(cache),
     };
     let app = build_app(&config, state);
 

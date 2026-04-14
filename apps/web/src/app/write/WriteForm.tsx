@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
 import ArticleEditor from "@/components/editor/ArticleEditor";
 import { Button } from "@/components/ui/Button";
+import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
 import { ROUTES } from "@/lib/routes";
 
 const CATEGORIES = [
@@ -85,8 +86,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
         tags,
       };
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-      const res = await fetch(`${apiUrl}/api/v1/articles`, {
+      const res = await fetch(apiUrl("/api/v1/articles"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -121,7 +121,11 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     } catch (err: unknown) {
       console.error(err);
       const message =
-        err instanceof Error ? err.message : "An error occurred while submitting.";
+        err instanceof ApiBaseUrlConfigurationError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "An error occurred while submitting.";
       alert(message);
       setIsSubmitting(false);
     }

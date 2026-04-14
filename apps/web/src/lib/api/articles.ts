@@ -1,4 +1,5 @@
 import { ROUTES } from "@/lib/routes";
+import { apiUrl } from "@/lib/api/base-url";
 
 export interface ArticleListItem {
   id: string;
@@ -72,12 +73,8 @@ export class ApiHttpError extends Error {
   }
 }
 
-function apiBaseUrl(): string {
-  return process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-}
-
 async function fetchJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${apiBaseUrl()}${path}`, {
+  const response = await fetch(apiUrl(path), {
     cache: "no-store",
   });
 

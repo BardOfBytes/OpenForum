@@ -12,13 +12,15 @@
 use axum::{
     Json,
     body::Body,
-    extract::ConnectInfo,
-    http::{Request, StatusCode},
+    extract::State,
+    http::{HeaderMap, Request, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 use serde::Serialize;
-use std::net::SocketAddr;
+use std::time::Duration;
+
+use crate::state::AppState;
 
 /// Rate limit configuration.
 #[derive(Debug, Clone)]
@@ -47,38 +49,56 @@ struct RateLimitError {
 }
 
 /// Rate limiting middleware function.
-///
-/// TODO: Connect to Redis for distributed rate limiting.
-/// Currently uses a placeholder that always passes to unblock development.
-///
-/// In production, this will:
-/// 1. Extract user identifier (IP or authenticated user ID)
-/// 2. Increment a Redis counter with TTL = window_seconds
-/// 3. Return 429 if counter exceeds max_requests
 pub async fn rate_limit_middleware(
-    connect_info: Option<ConnectInfo<SocketAddr>>,
+    State(state): State<AppState>,
     request: Request<Body>,
     next: Next,
 ) -> Response {
-    // Extract client identifier
-    let _client_id = connect_info
-        .map(|ci| ci.0.ip().to_string())
+    let config = RateLimitConfig::default();
+    let request_path = request.uri().path().to_string();
+    let client_id = forwarded_for_ip(request.headers())
         .unwrap_or_else(|| "unknown".to_string());
+    let key = format!("rate_limit:{}:{}", client_id, request_path);
 
-    // TODO: Implement Redis-based sliding window counter
-    //
-    // Pseudocode:
-    // let key = format!("rate_limit:{client_id}");
-    // let count: u64 = redis.incr(&key).await?;
-    // if count == 1 {
-    //     redis.expire(&key, config.window_seconds).await?;
-    // }
-    // if count > config.max_requests {
-    //     return rate_limit_exceeded_response(config.window_seconds);
-    // }
+    let count = state
+        .cache
+        .increment_with_ttl(&key, Duration::from_secs(config.window_seconds))
+        .await;
 
-    // For now, pass through all requests
+    match count {
+        Ok(current_count) if current_count > config.max_requests => {
+            tracing::warn!(
+                client_id = %client_id,
+                path = %request_path,
+                current_count,
+                max_requests = config.max_requests,
+                "Rate limit exceeded"
+            );
+            return rate_limit_exceeded_response(config.window_seconds);
+        }
+        Ok(_) => {}
+        Err(error) => {
+            // Fail open when Redis is unavailable so the API remains reachable.
+            tracing::warn!(
+                error = %error,
+                client_id = %client_id,
+                path = %request_path,
+                "Rate limiter unavailable; allowing request"
+            );
+        }
+    }
+
     next.run(request).await
+}
+
+fn forwarded_for_ip(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
 /// Build a 429 Too Many Requests response.

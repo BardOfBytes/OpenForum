@@ -23,7 +23,6 @@ fn test_config() -> AppConfig {
         port: 3001,
         frontend_url: "http://localhost:3000".to_string(),
         supabase_url: "http://localhost:54321".to_string(),
-        jwt_secret: TEST_JWT_SECRET.to_string(),
         google_sheets_id: "spreadsheet-id".to_string(),
         google_service_account_json: "{}".to_string(),
         google_drive_folder_id: "drive-folder-id".to_string(),
@@ -33,9 +32,11 @@ fn test_config() -> AppConfig {
 }
 
 fn app_state_with_test_services() -> AppState {
+    let cache = CacheService::for_tests();
     AppState {
         sheets: Arc::new(SheetsService::for_tests(vec![])),
         drive: Arc::new(DriveService::for_tests()),
+        cache: Arc::new(cache),
     }
 }
 
@@ -55,6 +56,7 @@ fn app_state_with_failing_sheets() -> AppState {
     AppState {
         sheets: Arc::new(sheets),
         drive: Arc::new(DriveService::for_tests()),
+        cache: Arc::new(CacheService::for_tests()),
     }
 }
 
@@ -70,6 +72,7 @@ fn app_state_with_failing_drive() -> AppState {
     AppState {
         sheets: Arc::new(SheetsService::for_tests(vec![])),
         drive: Arc::new(drive),
+        cache: Arc::new(CacheService::for_tests()),
     }
 }
 

@@ -51,7 +51,21 @@ async fn list_articles(
             )
         })?;
 
-    let total = (offset + data.len()) as u32;
+    let total = state
+        .sheets
+        .count_posts(query.category.as_deref())
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, "Failed to count articles from Sheets");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "articles_unavailable",
+                    message: "Unable to load article metadata from storage backend".to_string(),
+                }),
+            )
+        })?;
+
     Ok(Json(PaginatedResponse {
         data,
         page,

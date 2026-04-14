@@ -310,6 +310,40 @@ impl SheetsService {
         Ok(result)
     }
 
+    pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
+        if let Some(mock_posts) = &self.mock_posts {
+            let posts = mock_posts.read().await.clone();
+            let previews: Vec<ArticlePreview> = posts.iter().map(ArticlePreview::from).collect();
+            let filtered = if let Some(category_slug) = category {
+                previews
+                    .into_iter()
+                    .filter(|item| {
+                        item.category.name.to_lowercase().replace(' ', "-") == category_slug
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                previews
+            };
+
+            return Ok(filtered.len() as u32);
+        }
+
+        let rows = self.read_range("posts!A2:L").await?;
+        let mut previews: Vec<ArticlePreview> = rows
+            .iter()
+            .filter_map(|row| Self::row_to_article_preview(row))
+            .filter(|item| item.status.eq_ignore_ascii_case("Published"))
+            .collect();
+
+        if let Some(category_slug) = category {
+            previews.retain(|item| {
+                item.category.name.to_lowercase().replace(' ', "-") == category_slug
+            });
+        }
+
+        Ok(previews.len() as u32)
+    }
+
     pub async fn get_post_by_slug(&self, slug: &str) -> Result<Option<Article>> {
         if let Some(mock_posts) = &self.mock_posts {
             let posts = mock_posts.read().await;

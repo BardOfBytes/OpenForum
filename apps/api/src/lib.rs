@@ -7,12 +7,13 @@ pub mod routes;
 pub mod services;
 pub mod state;
 
-use axum::Router;
+use axum::{Router, middleware::from_fn_with_state};
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::AppConfig;
+use crate::middleware::rate_limit::rate_limit_middleware;
 use crate::state::AppState;
 
 /// Build the full Axum application router.
@@ -31,7 +32,8 @@ pub fn build_app(config: &AppConfig, state: AppState) -> Router {
     let api_v1 = Router::new()
         .merge(routes::articles::router())
         .merge(routes::users::router())
-        .merge(routes::upload::router());
+        .merge(routes::upload::router())
+        .layer(from_fn_with_state(state.clone(), rate_limit_middleware));
 
     Router::new()
         .merge(routes::health::router())
@@ -57,5 +59,10 @@ fn is_allowed_origin(origin: &str, configured_frontend_origin: &str) -> bool {
         return true;
     }
 
-    normalized_origin.starts_with("https://") && normalized_origin.ends_with(".vercel.app")
+    if normalized_origin.starts_with("https://") && normalized_origin.ends_with(".vercel.app") {
+        let host = normalized_origin.trim_start_matches("https://");
+        return host.starts_with("openforum-web");
+    }
+
+    false
 }

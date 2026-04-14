@@ -158,6 +158,31 @@ impl CacheService {
         Ok(())
     }
 
+    /// Increment a counter key and apply TTL on first write.
+    pub async fn increment_with_ttl(&self, key: &str, ttl: Duration) -> Result<u64> {
+        if self.disabled {
+            return Ok(0);
+        }
+
+        let mut conn = self.connection().await?;
+        let count: u64 = redis::cmd("INCR")
+            .arg(key)
+            .query_async(&mut conn)
+            .await
+            .with_context(|| format!("Redis INCR failed for key '{key}'"))?;
+
+        if count == 1 {
+            redis::cmd("EXPIRE")
+                .arg(key)
+                .arg(ttl.as_secs())
+                .query_async::<()>(&mut conn)
+                .await
+                .with_context(|| format!("Redis EXPIRE failed for key '{key}'"))?;
+        }
+
+        Ok(count)
+    }
+
     /// Invalidate all article caches (e.g., after creating or editing an article).
     pub async fn invalidate_articles(&self) -> Result<()> {
         if self.disabled {

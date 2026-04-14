@@ -15,8 +15,6 @@ pub struct AppConfig {
     pub frontend_url: String,
     /// Supabase project URL (used by auth middleware JWKS lookup).
     pub supabase_url: String,
-    /// Supabase JWT secret (required by deployment contract).
-    pub jwt_secret: String,
     /// Google Sheets spreadsheet ID for article storage.
     pub google_sheets_id: String,
     /// Google service account JSON key (as a raw string).
@@ -39,7 +37,6 @@ impl AppConfig {
 
         let frontend_url = required_env("NEXT_PUBLIC_FRONTEND_URL")?;
         let supabase_url = required_env("NEXT_PUBLIC_SUPABASE_URL")?;
-        let jwt_secret = required_env("AXUM_JWT_SECRET")?;
         let google_sheets_id = required_env("GOOGLE_SHEETS_ID")?;
         let google_service_account_json = required_env("GOOGLE_SERVICE_ACCOUNT_JSON")?;
         let google_drive_folder_id = required_env("GOOGLE_DRIVE_FOLDER_ID")?;
@@ -50,7 +47,6 @@ impl AppConfig {
             port,
             frontend_url,
             supabase_url,
-            jwt_secret,
             google_sheets_id,
             google_service_account_json,
             google_drive_folder_id,

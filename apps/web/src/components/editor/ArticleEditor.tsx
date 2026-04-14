@@ -7,6 +7,7 @@ import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
 import { useEffect, useState, useCallback } from "react";
+import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
 import {
   Image as ImageIcon,
   Code,
@@ -102,9 +103,8 @@ export default function ArticleEditor({
           setSaveIndicator("Uploading image...");
           const formData = new FormData();
           formData.append("file", file);
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-          const response = await fetch(`${apiUrl}/api/v1/upload`, {
+          const response = await fetch(apiUrl("/api/v1/upload"), {
             method: "POST",
             body: formData,
             headers: {
@@ -140,6 +140,9 @@ export default function ArticleEditor({
         } catch (err: unknown) {
           console.error("Image upload failed:", err);
           const message =
+            err instanceof ApiBaseUrlConfigurationError
+              ? err.message
+              :
             err instanceof TypeError && err.message === "Failed to fetch"
               ? "Cannot reach upload API. Verify NEXT_PUBLIC_API_URL uses https:// and API CORS allows this frontend origin."
               : err instanceof Error

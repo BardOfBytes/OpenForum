@@ -157,9 +157,11 @@ async fn get_jwks() -> Result<JwkSet, AuthErrorKind> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum UserRole {
-    /// Default role — can read articles and submit drafts.
-    Student,
-    /// Can publish articles and manage their own content.
+    /// Read-only access.
+    Reader,
+    /// Can create and manage authored content.
+    Writer,
+    /// Can publish articles and moderate content.
     Editor,
     /// Full platform access — can manage users and all content.
     Admin,
@@ -168,7 +170,8 @@ pub enum UserRole {
 impl std::fmt::Display for UserRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            UserRole::Student => write!(f, "student"),
+            UserRole::Reader => write!(f, "reader"),
+            UserRole::Writer => write!(f, "writer"),
             UserRole::Editor => write!(f, "editor"),
             UserRole::Admin => write!(f, "admin"),
         }
@@ -227,7 +230,7 @@ impl SupabaseClaims {
     /// Resolve the user's role from claims, checking multiple locations:
     /// 1. Top-level `user_role` claim
     /// 2. `app_metadata.role`
-    /// 3. Default to `Student`
+    /// 3. Default to `Reader`
     fn resolve_role(&self) -> UserRole {
         let role_str = self
             .user_role
@@ -238,9 +241,13 @@ impl SupabaseClaims {
             Some(r) => match r.to_lowercase().as_str() {
                 "admin" => UserRole::Admin,
                 "editor" => UserRole::Editor,
-                _ => UserRole::Student,
+                "writer" => UserRole::Writer,
+                "reader" => UserRole::Reader,
+                // Backward compatibility for legacy claim naming.
+                "student" => UserRole::Writer,
+                _ => UserRole::Reader,
             },
-            None => UserRole::Student,
+            None => UserRole::Reader,
         }
     }
 }
@@ -427,8 +434,12 @@ mod tests {
     #[test]
     fn test_user_role_deserialize() {
         assert_eq!(
-            serde_json::from_str::<UserRole>("\"student\"").unwrap(),
-            UserRole::Student,
+            serde_json::from_str::<UserRole>("\"reader\"").unwrap(),
+            UserRole::Reader,
+        );
+        assert_eq!(
+            serde_json::from_str::<UserRole>("\"writer\"").unwrap(),
+            UserRole::Writer,
         );
         assert_eq!(
             serde_json::from_str::<UserRole>("\"editor\"").unwrap(),
@@ -443,8 +454,12 @@ mod tests {
     #[test]
     fn test_user_role_serialize() {
         assert_eq!(
-            serde_json::to_string(&UserRole::Student).unwrap(),
-            "\"student\""
+            serde_json::to_string(&UserRole::Reader).unwrap(),
+            "\"reader\""
+        );
+        assert_eq!(
+            serde_json::to_string(&UserRole::Writer).unwrap(),
+            "\"writer\""
         );
         assert_eq!(
             serde_json::to_string(&UserRole::Editor).unwrap(),
@@ -483,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn test_resolve_role_defaults_to_student() {
+    fn test_resolve_role_defaults_to_reader() {
         let claims = SupabaseClaims {
             sub: "test".to_string(),
             email: Some("test@csvtu.ac.in".to_string()),
@@ -491,7 +506,19 @@ mod tests {
             user_role: None,
             app_metadata: None,
         };
-        assert_eq!(claims.resolve_role(), UserRole::Student);
+        assert_eq!(claims.resolve_role(), UserRole::Reader);
+    }
+
+    #[test]
+    fn test_legacy_student_claim_maps_to_writer() {
+        let claims = SupabaseClaims {
+            sub: "test".to_string(),
+            email: Some("test@csvtu.ac.in".to_string()),
+            exp: 9999999999,
+            user_role: Some("student".to_string()),
+            app_metadata: None,
+        };
+        assert_eq!(claims.resolve_role(), UserRole::Writer);
     }
 
     #[test]
