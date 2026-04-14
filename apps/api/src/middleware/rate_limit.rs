@@ -56,8 +56,7 @@ pub async fn rate_limit_middleware(
 ) -> Response {
     let config = RateLimitConfig::default();
     let request_path = request.uri().path().to_string();
-    let client_id = forwarded_for_ip(request.headers())
-        .unwrap_or_else(|| "unknown".to_string());
+    let client_id = forwarded_for_ip(request.headers()).unwrap_or_else(|| "unknown".to_string());
     let key = format!("rate_limit:{}:{}", client_id, request_path);
 
     let count = state

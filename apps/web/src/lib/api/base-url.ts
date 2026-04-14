@@ -15,7 +15,24 @@ export function getApiBaseUrl(): string {
   const rawApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
 
   if (rawApiUrl) {
-    return normalizeBaseUrl(rawApiUrl);
+    const normalized = normalizeBaseUrl(rawApiUrl);
+
+    let parsed: URL;
+    try {
+      parsed = new URL(normalized);
+    } catch {
+      throw new ApiBaseUrlConfigurationError(
+        "NEXT_PUBLIC_API_URL must be a valid absolute URL (for example: https://openforum-api.onrender.com)."
+      );
+    }
+
+    if (process.env.NODE_ENV === "production" && parsed.protocol !== "https:") {
+      throw new ApiBaseUrlConfigurationError(
+        "NEXT_PUBLIC_API_URL must use https:// in production."
+      );
+    }
+
+    return normalized;
   }
 
   if (process.env.NODE_ENV !== "production") {

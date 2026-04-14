@@ -31,7 +31,9 @@ use axum::{
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, Header, Validation, decode, decode_header, jwk::JwkSet,
+};
 use serde::{Deserialize, Serialize};
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
@@ -312,6 +314,42 @@ impl IntoResponse for AuthErrorKind {
     }
 }
 
+fn is_supported_jwks_algorithm(algorithm: Algorithm) -> bool {
+    matches!(
+        algorithm,
+        Algorithm::RS256
+            | Algorithm::RS384
+            | Algorithm::RS512
+            | Algorithm::ES256
+            | Algorithm::ES384
+            | Algorithm::EdDSA
+    )
+}
+
+async fn decode_with_jwks(token: &str, header: &Header) -> Result<SupabaseClaims, Response> {
+    let kid = header.kid.clone().ok_or_else(|| {
+        AuthErrorKind::InvalidToken("JWT header missing `kid` (key ID)".to_string()).into_response()
+    })?;
+
+    let jwks = get_jwks().await.map_err(|e| e.into_response())?;
+    let jwk = jwks.find(&kid).ok_or_else(|| {
+        AuthErrorKind::InvalidToken(format!("No matching key found for kid '{kid}'"))
+            .into_response()
+    })?;
+
+    let decoding_key = DecodingKey::from_jwk(jwk).map_err(|e| {
+        AuthErrorKind::InvalidToken(format!("Failed to build decoding key from JWK: {e}"))
+            .into_response()
+    })?;
+
+    let mut validation = Validation::new(header.alg);
+    validation.set_audience(&["authenticated"]);
+
+    decode::<SupabaseClaims>(token, &decoding_key, &validation)
+        .map_err(|e| AuthErrorKind::InvalidToken(e.to_string()).into_response())
+        .map(|data| data.claims)
+}
+
 // ── FromRequestParts Implementation ─────────────────────────────
 
 impl<S> FromRequestParts<S> for AuthUser
@@ -357,35 +395,13 @@ where
                 .map_err(|e| AuthErrorKind::InvalidToken(e.to_string()).into_response())?
                 .claims
             }
-            Algorithm::RS256 => {
-                let kid = header.kid.ok_or_else(|| {
-                    AuthErrorKind::InvalidToken("JWT header missing `kid` (key ID)".to_string())
-                        .into_response()
-                })?;
-
-                let jwks = get_jwks().await.map_err(|e| e.into_response())?;
-                let jwk = jwks.find(&kid).ok_or_else(|| {
-                    AuthErrorKind::InvalidToken(format!("No matching key found for kid '{kid}'"))
-                        .into_response()
-                })?;
-
-                let decoding_key = DecodingKey::from_jwk(jwk).map_err(|e| {
-                    AuthErrorKind::InvalidToken(format!(
-                        "Failed to build decoding key from JWK: {e}"
-                    ))
-                    .into_response()
-                })?;
-
-                let mut validation = Validation::new(Algorithm::RS256);
-                validation.set_audience(&["authenticated"]);
-
-                decode::<SupabaseClaims>(token, &decoding_key, &validation)
-                    .map_err(|e| AuthErrorKind::InvalidToken(e.to_string()).into_response())?
-                    .claims
-            }
+            alg if is_supported_jwks_algorithm(alg) => decode_with_jwks(token, &header).await?,
             _ => {
                 return Err(AuthErrorKind::InvalidToken(
-                    "Unsupported JWT algorithm. Expected RS256 or HS256".to_string(),
+                    format!(
+                        "Unsupported JWT algorithm '{:?}'. Expected HS256 or a Supabase JWKS algorithm (RS256/RS384/RS512/ES256/ES384/EdDSA)",
+                        header.alg
+                    ),
                 )
                 .into_response());
             }
