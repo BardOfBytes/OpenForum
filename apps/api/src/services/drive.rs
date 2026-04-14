@@ -200,7 +200,7 @@ impl DriveService {
 
         let create_response = self
             .client
-            .post("https://www.googleapis.com/drive/v3/files?fields=id")
+            .post("https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true")
             .bearer_auth(&token)
             .json(&metadata)
             .send()
@@ -222,7 +222,7 @@ impl DriveService {
             .context("Failed to parse Google Drive create-file response")?;
 
         let upload_url = format!(
-            "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media",
+            "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media&supportsAllDrives=true",
             create_response.id
         );
         let upload_response = self
@@ -245,7 +245,7 @@ impl DriveService {
         }
 
         let permissions_url = format!(
-            "https://www.googleapis.com/drive/v3/files/{}/permissions",
+            "https://www.googleapis.com/drive/v3/files/{}/permissions?supportsAllDrives=true",
             create_response.id
         );
         let permissions_body = serde_json::json!({

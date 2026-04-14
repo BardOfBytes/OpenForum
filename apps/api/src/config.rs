@@ -40,8 +40,10 @@ impl AppConfig {
         let google_sheets_id = required_env("GOOGLE_SHEETS_ID")?;
         let google_service_account_json = required_env("GOOGLE_SERVICE_ACCOUNT_JSON")?;
         let google_drive_folder_id = required_env("GOOGLE_DRIVE_FOLDER_ID")?;
-        let redis_url = required_env("UPSTASH_REDIS_URL")?;
-        let redis_token = required_env("UPSTASH_REDIS_TOKEN")?;
+        let redis_url =
+            required_env_with_fallback(&["UPSTASH_REDIS_URL", "UPSTASH_REDIS_REST_URL"])?;
+        let redis_token =
+            required_env_with_fallback(&["UPSTASH_REDIS_TOKEN", "UPSTASH_REDIS_REST_TOKEN"])?;
 
         Ok(Self {
             port,
@@ -62,4 +64,16 @@ fn required_env(key: &str) -> Result<String> {
         bail!("Environment variable '{key}' cannot be empty");
     }
     Ok(value)
+}
+
+fn required_env_with_fallback(keys: &[&str]) -> Result<String> {
+    for key in keys {
+        if let Ok(value) = env::var(key)
+            && !value.trim().is_empty()
+        {
+            return Ok(value);
+        }
+    }
+
+    bail!("Missing required env var. Set one of: {}", keys.join(", "))
 }

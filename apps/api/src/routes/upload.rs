@@ -32,6 +32,34 @@ fn infer_mime_type_from_filename(filename: &str) -> Option<&'static str> {
     }
 }
 
+fn map_upstream_upload_error(message: &str) -> &'static str {
+    if message.contains("create-file returned HTTP 404") {
+        return "Drive folder not found. Verify GOOGLE_DRIVE_FOLDER_ID in backend environment variables.";
+    }
+
+    if message.contains("create-file returned HTTP 403") {
+        return "Drive write access denied. Share the target folder with the Google service account email.";
+    }
+
+    if message.contains("permission request returned HTTP 403") {
+        return "Drive upload succeeded, but Google denied public sharing. Check Workspace sharing policy or use a personal Drive folder.";
+    }
+
+    if message.contains("Google OAuth API returned an error") {
+        return "Google Drive authentication failed. Verify GOOGLE_SERVICE_ACCOUNT_JSON in backend environment variables.";
+    }
+
+    if message.contains("Network error requesting Google Drive access token")
+        || message.contains("Google Drive create-file request failed")
+        || message.contains("Google Drive media upload request failed")
+        || message.contains("Google Drive permission request failed")
+    {
+        return "Unable to reach Google Drive API right now. Try again in a moment.";
+    }
+
+    "Image upload failed due to upstream storage error"
+}
+
 async fn upload_image(
     State(state): State<AppState>,
     _user: AuthUser,
@@ -113,8 +141,7 @@ async fn upload_image(
                         StatusCode::BAD_GATEWAY,
                         Json(ErrorResponse {
                             error: "upload_failed",
-                            message: "Image upload failed due to upstream storage error"
-                                .to_string(),
+                            message: map_upstream_upload_error(&message).to_string(),
                         }),
                     )
                 }

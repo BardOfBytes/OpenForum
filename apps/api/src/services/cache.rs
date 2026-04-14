@@ -43,17 +43,23 @@ pub mod ttl {
 pub struct CacheService {
     client: Option<redis::Client>,
     redis_token: String,
+    send_auth_command: bool,
     disabled: bool,
 }
 
 impl CacheService {
     /// Create a new CacheService.
     pub fn new(redis_url: String, redis_token: String) -> Result<Self> {
-        let client = redis::Client::open(redis_url.as_str())
-            .with_context(|| format!("Failed to open Redis client for URL '{redis_url}'"))?;
+        let normalized_url = normalize_redis_url(&redis_url, &redis_token)?;
+        let send_auth_command = !redis_url_has_credentials(&normalized_url);
+
+        let client = redis::Client::open(normalized_url.as_str())
+            .with_context(|| format!("Failed to open Redis client for URL '{normalized_url}'"))?;
+
         Ok(Self {
             client: Some(client),
             redis_token,
+            send_auth_command,
             disabled: false,
         })
     }
@@ -63,6 +69,7 @@ impl CacheService {
         Self {
             client: None,
             redis_token: String::new(),
+            send_auth_command: false,
             disabled: true,
         }
     }
@@ -81,18 +88,31 @@ impl CacheService {
             .await
             .context("Failed to connect to Redis")?;
 
-        // Upstash uses AUTH token; ignore AUTH-on-no-password for local Redis.
-        let auth_result: redis::RedisResult<()> = redis::cmd("AUTH")
-            .arg(&self.redis_token)
-            .query_async(&mut conn)
-            .await;
+        if self.send_auth_command {
+            // Allow local Redis instances with no password while still supporting token auth.
+            let auth_result: redis::RedisResult<()> = redis::cmd("AUTH")
+                .arg(&self.redis_token)
+                .query_async(&mut conn)
+                .await;
 
-        if let Err(error) = auth_result {
-            let message = error.to_string();
-            if !message.contains("no password is set")
-                && !message.contains("AUTH called without any password configured")
-            {
-                return Err(error).context("Redis AUTH failed");
+            if let Err(single_arg_error) = auth_result {
+                let message = single_arg_error.to_string();
+                if !message.contains("no password is set")
+                    && !message.contains("AUTH called without any password configured")
+                {
+                    // Some providers require AUTH username password form.
+                    let dual_arg_result: redis::RedisResult<()> = redis::cmd("AUTH")
+                        .arg("default")
+                        .arg(&self.redis_token)
+                        .query_async(&mut conn)
+                        .await;
+
+                    if let Err(dual_arg_error) = dual_arg_result {
+                        return Err(dual_arg_error).context(format!(
+                            "Redis AUTH failed (single-arg error: {single_arg_error})"
+                        ));
+                    }
+                }
             }
         }
 
@@ -219,4 +239,49 @@ impl CacheService {
 
         Ok(())
     }
+}
+
+fn normalize_redis_url(redis_url: &str, redis_token: &str) -> Result<String> {
+    let mut normalized = redis_url.trim().to_string();
+
+    if normalized.starts_with("http://") || normalized.starts_with("https://") {
+        let parsed = reqwest::Url::parse(&normalized)
+            .with_context(|| format!("Invalid Redis URL format: '{redis_url}'"))?;
+        let host = parsed.host_str().context("Redis URL is missing a host")?;
+        let port = parsed.port().unwrap_or(6379);
+        let scheme = if parsed.scheme() == "https" {
+            "rediss"
+        } else {
+            "redis"
+        };
+        normalized = format!("{scheme}://{host}:{port}");
+    }
+
+    let is_upstash = normalized.contains(".upstash.io");
+
+    if is_upstash && normalized.starts_with("redis://") {
+        normalized = normalized.replacen("redis://", "rediss://", 1);
+    }
+
+    if is_upstash && !redis_url_has_credentials(&normalized) {
+        let scheme_end = normalized
+            .find("://")
+            .context("Redis URL is missing a scheme separator")?
+            + 3;
+        normalized.insert_str(scheme_end, &format!("default:{redis_token}@"));
+    }
+
+    Ok(normalized)
+}
+
+fn redis_url_has_credentials(redis_url: &str) -> bool {
+    let Some(scheme_end) = redis_url.find("://") else {
+        return false;
+    };
+    let authority_and_path = &redis_url[(scheme_end + 3)..];
+    let authority = authority_and_path
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(authority_and_path);
+    authority.contains('@')
 }
