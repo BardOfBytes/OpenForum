@@ -17,17 +17,14 @@ use crate::state::AppState;
 
 /// Build the full Axum application router.
 pub fn build_app(config: &AppConfig, state: AppState) -> Router {
+    let configured_frontend_origin = config.frontend_url.clone();
     let cors = CorsLayer::new()
-        .allow_origin(
-            config
-                .frontend_url
-                .parse::<axum::http::HeaderValue>()
-                .map(AllowOrigin::exact)
-                .unwrap_or_else(|_| {
-                    tracing::warn!("Invalid CORS origin, falling back to permissive");
-                    AllowOrigin::any()
-                }),
-        )
+        .allow_origin(AllowOrigin::predicate(move |origin, _request_parts| {
+            origin
+                .to_str()
+                .map(|value| is_allowed_origin(value, &configured_frontend_origin))
+                .unwrap_or(false)
+        }))
         .allow_methods(AllowMethods::any())
         .allow_headers(AllowHeaders::any());
 
@@ -43,4 +40,23 @@ pub fn build_app(config: &AppConfig, state: AppState) -> Router {
         .layer(CompressionLayer::new())
         .layer(cors)
         .layer(TraceLayer::new_for_http())
+}
+
+fn is_allowed_origin(origin: &str, configured_frontend_origin: &str) -> bool {
+    let normalized_origin = origin.trim_end_matches('/').to_ascii_lowercase();
+    let normalized_configured = configured_frontend_origin
+        .trim_end_matches('/')
+        .to_ascii_lowercase();
+
+    if normalized_origin == normalized_configured {
+        return true;
+    }
+
+    if normalized_origin == "http://localhost:3000"
+        || normalized_origin == "http://127.0.0.1:3000"
+    {
+        return true;
+    }
+
+    normalized_origin.starts_with("https://") && normalized_origin.ends_with(".vercel.app")
 }

@@ -24,6 +24,17 @@ interface ArticleEditorProps {
 const STORAGE_KEY = "draft_article_body";
 const MAX_CHARACTERS = 10000;
 
+async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+  const raw = await response.text();
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
 export default function ArticleEditor({
   initialContent = "",
   sessionToken,
@@ -101,19 +112,19 @@ export default function ArticleEditor({
             },
           });
 
+          const body = await parseJsonSafe<{ error?: string; message?: string; public_url?: string }>(
+            response
+          );
+
           if (!response.ok) {
-            let message = "Image upload failed.";
-            try {
-              const body = (await response.json()) as { error?: string; message?: string };
-              message = body.message ?? body.error ?? message;
-            } catch {
-              // Ignore non-JSON error body.
-            }
-            throw new Error(message);
+            throw new Error(
+              body?.message ??
+                body?.error ??
+                `Image upload failed (HTTP ${response.status}).`
+            );
           }
 
-          const data = (await response.json()) as { public_url?: string };
-          if (!data.public_url) {
+          if (!body?.public_url) {
             throw new Error("Upload succeeded but no image URL was returned.");
           }
 
@@ -121,14 +132,19 @@ export default function ArticleEditor({
             editor
               .chain()
               .focus()
-              .setImage({ src: data.public_url })
+              .setImage({ src: body.public_url })
               .run();
           }
           setSaveIndicator("Image uploaded");
           setTimeout(() => setSaveIndicator(""), 2000);
         } catch (err: unknown) {
           console.error("Image upload failed:", err);
-          const message = err instanceof Error ? err.message : "Image upload failed.";
+          const message =
+            err instanceof TypeError && err.message === "Failed to fetch"
+              ? "Cannot reach upload API. Verify NEXT_PUBLIC_API_URL uses https:// and API CORS allows this frontend origin."
+              : err instanceof Error
+                ? err.message
+                : "Image upload failed.";
           setSaveIndicator("");
           alert(message);
         }

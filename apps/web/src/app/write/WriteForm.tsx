@@ -49,6 +49,17 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
+  async function parseJsonSafe<T>(response: Response): Promise<T | null> {
+    const raw = await response.text();
+    if (!raw) return null;
+
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return null;
+    }
+  }
+
   const handleSubmit = async () => {
     if (!title.trim() || !contentHtml || contentHtml === "<p></p>") {
       alert("Please enter a title and content.");
@@ -84,16 +95,28 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
         body: JSON.stringify(payload),
       });
 
+      const body = await parseJsonSafe<{ message?: string; error?: string; slug?: string }>(
+        res
+      );
+
       if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Failed to submit article");
+        throw new Error(
+          body?.message ??
+            body?.error ??
+            `Failed to submit article (HTTP ${res.status})`
+        );
       }
 
       // Clear draft locally since it's published
       localStorage.removeItem("draft_article_body");
-      
-      const newArticle = (await res.json()) as { slug: string };
-      router.push(ROUTES.article.detail(newArticle.slug));
+
+      if (!body?.slug) {
+        throw new Error(
+          "Article created, but server response was invalid. Please refresh and check your articles."
+        );
+      }
+
+      router.push(ROUTES.article.detail(body.slug));
       
     } catch (err: unknown) {
       console.error(err);
