@@ -1,93 +1,114 @@
-# Credentials & API Integration Guide
+# Credentials Guide (Beginner Friendly)
 
-This guide covers all credentials needed to run OpenForum in production.
+Use this document to collect every value you must copy once and paste into Vercel/Render.
 
----
-
-## 1. Supabase (Auth + Profiles)
-
-OpenForum web auth and API token validation depend on Supabase.
-
-1. Go to [Supabase Dashboard](https://supabase.com/dashboard) and create a project.
-2. Open **Settings > API** and collect:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `AXUM_JWT_SECRET` (JWT Secret)
-3. Run SQL migration in Supabase SQL Editor:
-   - File: `supabase/migrations/001_create_profiles.sql`
-4. Configure OAuth provider(s):
-   - **Authentication > Providers > Google** (and GitHub if needed)
-5. Add callback/redirect URLs in **Authentication > URL Configuration**:
-   - Local: `http://localhost:3000/auth/callback`
-   - Production: `https://<your-vercel-domain>/auth/callback`
-
-> Note: Domain restriction (`@csvtu.ac.in`) is enforced in the app callback logic.
+If you are new: do this in order.
 
 ---
 
-## 2. Google Cloud (Sheets + Drive)
+## 1. Supabase Values
 
-OpenForum API stores article metadata in Google Sheets and uploads media to Google Drive.
+### 1.1 Open API Keys page
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/).
+1. Go to https://supabase.com/dashboard
+2. Open your project.
+3. Left menu: **Settings -> API Keys**.
+4. Keep this tab open.
+
+### 1.2 Copy these values
+
+Copy from Supabase | Paste into env var | Where to set
+--- | --- | ---
+Project URL | `NEXT_PUBLIC_SUPABASE_URL` | Vercel + Render
+Publishable key (`sb_publishable_...`) | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Vercel
+Secret key (`sb_secret_...`) optional | `SUPABASE_SERVICE_KEY` | Server only (never in `NEXT_PUBLIC_*`)
+
+### 1.3 Copy JWT secret for backend
+
+1. Left menu: **Settings -> JWT Keys**.
+2. Open **Legacy JWT Secret** tab.
+3. Click **Reveal**.
+4. Copy this value.
+5. Paste into env var: `AXUM_JWT_SECRET` (Render backend).
+
+---
+
+## 2. Google Values (Sheets + Drive)
+
+### 2.1 Enable APIs in Google Cloud
+
+1. Go to https://console.cloud.google.com
 2. Create/select project.
-3. Enable APIs:
-   - **Google Sheets API**
-   - **Google Drive API**
-4. Create service account:
-   - **IAM & Admin > Service Accounts > Create Service Account**
-5. Create JSON key:
-   - Service account > **Keys > Add Key > Create new key > JSON**
-6. Share resources with service account email (`client_email` in JSON):
-   - Share target Sheet as **Editor**.
-   - Share target Drive folder as **Editor**.
-7. Collect resource IDs:
-   - `GOOGLE_SHEETS_ID`: from Google Sheet URL
-   - `GOOGLE_DRIVE_FOLDER_ID`: from Drive folder URL
+3. Enable:
+   - Google Sheets API
+   - Google Drive API
 
-### Convert JSON to env-safe single line
+### 2.2 Create service account JSON
 
-Run locally:
+1. Go to **IAM & Admin -> Service Accounts**.
+2. Click **Create Service Account**.
+3. Open the created account.
+4. Tab **Keys -> Add Key -> Create new key -> JSON**.
+5. Download the JSON file.
+
+### 2.3 Share access with service account email
+
+1. Open JSON file and copy `client_email`.
+2. Open your Google Sheet -> **Share** -> paste email -> role **Editor**.
+3. Open your Drive folder -> **Share** -> paste email -> role **Editor**.
+
+### 2.4 Copy IDs
+
+Copy from Google | Paste into env var | Where to set
+--- | --- | ---
+Sheet URL ID | `GOOGLE_SHEETS_ID` | Render
+Drive folder URL ID | `GOOGLE_DRIVE_FOLDER_ID` | Render
+JSON content (single line) | `GOOGLE_SERVICE_ACCOUNT_JSON` | Render
+
+Convert JSON to one line:
 
 ```bash
 jq -c . /path/to/service-account.json
 ```
 
-Use output as `GOOGLE_SERVICE_ACCOUNT_JSON`.
+Paste the output into `GOOGLE_SERVICE_ACCOUNT_JSON`.
 
 ---
 
-## 3. Upstash Redis (Cache)
+## 3. Upstash Redis Values
 
-OpenForum API uses Upstash Redis for cache-aside article caching.
+1. Go to https://console.upstash.com/redis
+2. Create database.
+3. Open DB details.
+4. Copy:
+   - Redis URL -> `UPSTASH_REDIS_URL`
+   - Token/password -> `UPSTASH_REDIS_TOKEN`
 
-1. Create DB at [Upstash Console](https://console.upstash.com/redis).
-2. Collect:
-   - `UPSTASH_REDIS_URL` (Redis URL form)
-   - `UPSTASH_REDIS_TOKEN`
-3. Expected URL format:
+Expected URL format:
 
 ```bash
 redis://default:<token>@<host>:6379
 ```
 
+Set both on Render backend.
+
 ---
 
-## 4. Environment Variable Matrix
+## 4. Final Env Mapping (Quick)
 
-### Web (Vercel)
+### Vercel (frontend)
 
-Required:
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `NEXT_PUBLIC_API_URL` (Render backend URL)
+- `NEXT_PUBLIC_API_URL`
 
-Optional:
+Optional server-side only:
 - `SUPABASE_SERVICE_KEY`
 
-### API (Render)
+### Render (backend)
 
-Required (fail-fast at boot):
+- `PORT`
+- `RUST_LOG`
 - `NEXT_PUBLIC_FRONTEND_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `AXUM_JWT_SECRET`
@@ -97,13 +118,10 @@ Required (fail-fast at boot):
 - `UPSTASH_REDIS_URL`
 - `UPSTASH_REDIS_TOKEN`
 
-Recommended:
-- `RUST_LOG=openforum_api=debug,tower_http=debug`
-
 ---
 
-## 5. Security Notes
+## 5. Safety
 
-- Never commit real `.env` values.
-- Rotate Supabase, Google, and Upstash secrets if exposed.
-- Keep service account access scoped only to required Sheet and Drive folder.
+- Never put secret keys into `NEXT_PUBLIC_*` variables.
+- Never commit `.env` files.
+- Rotate keys immediately if exposed publicly.

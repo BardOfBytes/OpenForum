@@ -1,76 +1,92 @@
-# Render Deployment Guide (Backend API)
+# Render Deployment (Backend API) - Click-by-Click
 
-Deploy OpenForum API (`apps/api`) on Render Web Service.
-
----
-
-## 1. Prerequisites
-
-- GitHub repo connected to Render
-- Supabase project configured
-- Google service account + shared Sheet/Drive folder
-- Upstash Redis database
-
-Reference: `docs/CREDENTIALS_GUIDE.md`
+Deploy `apps/api` to Render first.
 
 ---
 
-## 2. Create Render Web Service
+## Step 1: Create Web Service
 
-1. Open [Render Dashboard](https://dashboard.render.com/).
-2. Click **New + > Web Service**.
-3. Connect repository.
-4. Configure service:
+1. Open https://dashboard.render.com
+2. Click **New +**.
+3. Click **Web Service**.
+4. Connect your GitHub repo.
+5. Fill fields:
    - **Name**: `openforum-api`
    - **Root Directory**: `apps/api`
    - **Runtime**: `Rust`
    - **Build Command**: `cargo build --release`
    - **Start Command**: `./target/release/openforum-api`
-5. Set **Health Check Path**: `/health`
+6. Click **Create Web Service**.
 
 ---
 
-## 3. Environment Variables (Required)
+## Step 2: Add environment variables
 
-Add these in Render service environment:
+1. Open your Render service.
+2. Go to **Environment** tab.
+3. Click **Add Environment Variable**.
+4. Add each key below exactly.
 
-- `PORT` = `10000` (or leave Render default)
-- `RUST_LOG` = `openforum_api=debug,tower_http=debug`
-- `NEXT_PUBLIC_FRONTEND_URL` = `https://<your-vercel-domain>`
-- `NEXT_PUBLIC_SUPABASE_URL` = `https://<your-project>.supabase.co`
-- `AXUM_JWT_SECRET` = `<supabase-jwt-secret>`
-- `GOOGLE_SHEETS_ID` = `<sheet-id>`
-- `GOOGLE_SERVICE_ACCOUNT_JSON` = `<single-line-json>`
-- `GOOGLE_DRIVE_FOLDER_ID` = `<drive-folder-id>`
-- `UPSTASH_REDIS_URL` = `redis://default:<token>@<host>:6379`
-- `UPSTASH_REDIS_TOKEN` = `<upstash-token>`
+Key | Value source | Example
+--- | --- | ---
+`PORT` | Render default | `10000`
+`RUST_LOG` | Manual | `openforum_api=debug,tower_http=debug`
+`NEXT_PUBLIC_FRONTEND_URL` | Vercel URL (or temp) | `http://localhost:3000` initially
+`NEXT_PUBLIC_SUPABASE_URL` | Supabase Settings -> API Keys | `https://<project>.supabase.co`
+`AXUM_JWT_SECRET` | Supabase Settings -> JWT Keys -> Legacy JWT Secret | `<copied secret>`
+`GOOGLE_SHEETS_ID` | Google Sheet URL | `<sheet-id>`
+`GOOGLE_SERVICE_ACCOUNT_JSON` | `jq -c` output from service account JSON | `{...}` one line
+`GOOGLE_DRIVE_FOLDER_ID` | Google Drive folder URL | `<folder-id>`
+`UPSTASH_REDIS_URL` | Upstash console | `redis://default:...@...:6379`
+`UPSTASH_REDIS_TOKEN` | Upstash console | `<token>`
 
-> Important: API startup fails if required vars are missing/empty.
-
----
-
-## 4. Deploy + Verify
-
-After first deploy, verify:
-
-1. `GET https://<render-service>/health` returns `200`.
-2. `GET https://<render-service>/api/v1/articles` returns non-5xx.
-3. Check Render logs for boot errors around missing env vars.
+Important: startup is strict; missing/empty required vars will crash boot.
 
 ---
 
-## 5. Common Issues
+## Step 3: Deploy and monitor logs
 
-- **Boot fails immediately**: one or more required env vars missing.
-- **403/404 from Google APIs**: service account not shared on Sheet/Drive folder.
-- **CORS blocked**: `NEXT_PUBLIC_FRONTEND_URL` does not match your Vercel domain.
-- **Upload errors**: invalid Drive folder ID or invalid `GOOGLE_SERVICE_ACCOUNT_JSON`.
+1. Click **Manual Deploy** (if needed) or push commit.
+2. Open **Logs** tab.
+3. Wait for successful boot message.
+
+If you see missing env var error, add the exact missing key and redeploy.
 
 ---
 
-## 6. Post-Deploy
+## Step 4: Health check
 
-After backend URL is live:
+Open in browser:
 
-- Set `NEXT_PUBLIC_API_URL=https://<render-service>` in Vercel frontend project.
-- Redeploy frontend.
+```text
+https://<your-render-service>/health
+```
+
+Expected: `status: ok` response.
+
+Then test:
+
+```text
+https://<your-render-service>/api/v1/articles
+```
+
+Expected: non-5xx response.
+
+---
+
+## Step 5: After Vercel is ready
+
+Update this Render env var:
+
+- `NEXT_PUBLIC_FRONTEND_URL=https://<your-vercel-domain>`
+
+Then redeploy backend once.
+
+---
+
+## Common mistakes
+
+- Wrong Root Directory (must be `apps/api`)
+- Pasting multi-line JSON (must be one-line `jq -c` output)
+- Not sharing Sheet/Drive folder with service account email
+- Using publishable key instead of JWT secret for `AXUM_JWT_SECRET`

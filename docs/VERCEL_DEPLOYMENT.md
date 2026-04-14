@@ -1,69 +1,80 @@
-# Vercel Deployment Guide (Frontend)
+# Vercel Deployment (Frontend) - Click-by-Click
 
-Deploy OpenForum web app (`apps/web`) on Vercel.
-
----
-
-## 1. Prerequisites
-
-- Backend already deployed on Render (you need API URL)
-- Supabase project configured
-
-Reference: `docs/CREDENTIALS_GUIDE.md`, `docs/RENDER_DEPLOYMENT.md`
+Deploy `apps/web` after backend is live.
 
 ---
 
-## 2. Create Vercel Project
+## Step 1: Create Vercel project
 
-1. Open [Vercel Dashboard](https://vercel.com/dashboard).
-2. Click **Add New > Project** and import this repository.
-3. Configure project:
+1. Open https://vercel.com/dashboard
+2. Click **Add New... -> Project**.
+3. Import this GitHub repository.
+4. Configure:
    - **Root Directory**: `apps/web`
-   - **Framework Preset**: `Next.js`
+   - **Framework**: Next.js
    - **Install Command**: `pnpm install --frozen-lockfile`
    - **Build Command**: `pnpm run build`
-   - **Output Directory**: leave default for Next.js
+5. Click **Deploy**.
 
 ---
 
-## 3. Environment Variables (Required)
+## Step 2: Add environment variables
 
-Set in Vercel (Production + Preview):
+1. Open Vercel project.
+2. Go to **Settings -> Environment Variables**.
+3. Add each variable for `Production`, `Preview`, and `Development`.
 
-- `NEXT_PUBLIC_SUPABASE_URL` = `https://<your-project>.supabase.co`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `<anon-key>`
-- `NEXT_PUBLIC_API_URL` = `https://<your-render-service>`
+Key | Value source | Example
+--- | --- | ---
+`NEXT_PUBLIC_SUPABASE_URL` | Supabase Settings -> API Keys | `https://<project>.supabase.co`
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase Publishable key | `sb_publishable_...`
+`NEXT_PUBLIC_API_URL` | Render backend URL | `https://<render-service>.onrender.com`
 
-Optional:
-- `SUPABASE_SERVICE_KEY`
+Optional server-only key:
+- `SUPABASE_SERVICE_KEY` (do not expose as `NEXT_PUBLIC_*`).
 
----
-
-## 4. Supabase Redirect URLs
-
-After Vercel deploy gives your domain, update Supabase:
-
-1. Go to **Supabase > Authentication > URL Configuration**
-2. Add:
-   - `https://<your-vercel-domain>/auth/callback`
-
-For local dev keep:
-- `http://localhost:3000/auth/callback`
+4. Click **Save**.
+5. Redeploy from **Deployments** tab.
 
 ---
 
-## 5. Deploy + Verify
+## Step 3: Update Supabase callback URLs
 
-1. Trigger Vercel deployment.
-2. Verify:
-   - Home page loads.
-   - Login OAuth returns to `/auth/callback` then redirects to `/articles`.
-   - Articles list loads from API.
+After Vercel gives your final domain:
+
+1. Open Supabase -> **Authentication -> URL Configuration**.
+2. Add redirect URL:
+
+```text
+https://<your-vercel-domain>/auth/callback
+```
+
+3. Set Site URL:
+
+```text
+https://<your-vercel-domain>
+```
+
+Keep local callback too:
+
+```text
+http://localhost:3000/auth/callback
+```
 
 ---
 
-## 6. Common Issues
+## Step 4: Verify app flow
 
-- **Auth callback error**: Supabase redirect URL missing/mismatch.
-- **Articles fail to load**: `NEXT_PUBLIC_API_URL` incorrect or backend down.
-- **CORS errors**: backend `NEXT_PUBLIC_FRONTEND_URL` not set to Vercel domain.
+1. Open Vercel URL.
+2. Click **Sign in**.
+3. Complete OAuth.
+4. Confirm redirect to `/articles`.
+5. Confirm articles list loads from backend.
+
+---
+
+## Common mistakes
+
+- Missing `NEXT_PUBLIC_API_URL`
+- Wrong Supabase callback URL
+- Backend CORS not updated (`NEXT_PUBLIC_FRONTEND_URL` on Render)
