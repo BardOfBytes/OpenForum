@@ -89,7 +89,8 @@ BEGIN
   NEW.updated_at = now();
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public;
 
 CREATE TRIGGER on_profile_updated
   BEFORE UPDATE ON public.profiles
@@ -102,17 +103,26 @@ CREATE TRIGGER on_profile_updated
 -- ──────────────────────────────────────────────────────────────
 -- This is a SECOND layer of protection beyond the application-level
 -- check in the OAuth callback. Even if someone bypasses the
--- callback, the database will reject non-@csvtu.ac.in users.
+-- callback, the database will reject non-institutional users.
+-- Allowed domains:
+--   1) @csvtu.ac.in
+--   2) @students.csvtu.ac.in
 
 CREATE OR REPLACE FUNCTION public.restrict_email_domain()
 RETURNS TRIGGER AS $$
 BEGIN
-  IF NEW.email IS NOT NULL AND NEW.email NOT LIKE '%@csvtu.ac.in' THEN
-    RAISE EXCEPTION 'Access restricted to @csvtu.ac.in emails only. Got: %', NEW.email;
+  IF NEW.email IS NOT NULL
+    AND NEW.email NOT LIKE '%@csvtu.ac.in'
+    AND NEW.email NOT LIKE '%@students.csvtu.ac.in'
+  THEN
+    RAISE EXCEPTION
+      'Access restricted to @csvtu.ac.in or @students.csvtu.ac.in emails only. Got: %',
+      NEW.email;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, public;
 
 CREATE TRIGGER enforce_csvtu_domain
   BEFORE INSERT OR UPDATE ON public.profiles
@@ -123,15 +133,17 @@ CREATE TRIGGER enforce_csvtu_domain
 -- ──────────────────────────────────────────────────────────────
 -- 5. Optional: Restrict auth.users domain (strongest protection)
 -- ──────────────────────────────────────────────────────────────
--- Uncomment the block below to prevent non-@csvtu.ac.in users
+-- Uncomment the block below to prevent non-institutional users
 -- from even being created in Supabase auth. This is the most
 -- secure option but may interfere with Supabase internal flows.
 --
 -- CREATE OR REPLACE FUNCTION public.restrict_auth_domain()
 -- RETURNS TRIGGER AS $$
 -- BEGIN
---   IF NEW.email NOT LIKE '%@csvtu.ac.in' THEN
---     RAISE EXCEPTION 'Registration restricted to @csvtu.ac.in emails.';
+--   IF NEW.email NOT LIKE '%@csvtu.ac.in'
+--      AND NEW.email NOT LIKE '%@students.csvtu.ac.in' THEN
+--     RAISE EXCEPTION
+--       'Registration restricted to @csvtu.ac.in or @students.csvtu.ac.in emails.';
 --   END IF;
 --   RETURN NEW;
 -- END;

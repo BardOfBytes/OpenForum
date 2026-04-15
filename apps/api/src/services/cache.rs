@@ -15,6 +15,14 @@ pub mod keys {
         }
     }
 
+    /// Cache key for article list total count.
+    pub fn article_count(category: Option<&str>) -> String {
+        match category {
+            Some(cat) => format!("articles:count:{}", cat),
+            None => "articles:count:all".to_string(),
+        }
+    }
+
     /// Cache key for a single article by slug.
     pub fn article_by_slug(slug: &str) -> String {
         format!("articles:slug:{}", slug)
@@ -32,6 +40,8 @@ pub mod ttl {
 
     /// Article list cache: 2 minutes.
     pub const ARTICLE_LIST: Duration = Duration::from_secs(120);
+    /// Article count cache: 2 minutes.
+    pub const ARTICLE_COUNT: Duration = Duration::from_secs(120);
     /// Single article cache: 5 minutes.
     pub const ARTICLE_DETAIL: Duration = Duration::from_secs(300);
     /// User profile cache: 10 minutes.

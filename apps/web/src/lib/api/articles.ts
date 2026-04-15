@@ -86,9 +86,11 @@ export class ApiHttpError extends Error {
   }
 }
 
+const ARTICLES_FETCH_REVALIDATE_SECONDS = 60;
+
 async function fetchJson<T>(path: string): Promise<T> {
   const response = await fetch(apiUrl(path), {
-    cache: "no-store",
+    next: { revalidate: ARTICLES_FETCH_REVALIDATE_SECONDS },
   });
 
   if (!response.ok) {

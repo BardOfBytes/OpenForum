@@ -19,12 +19,11 @@ This is the exact setup for OpenForum.
 
 1. Left menu -> **SQL Editor**.
 2. Click **New query**.
-3. Open file in your repo: `supabase/migrations/001_create_profiles.sql`.
-4. Copy full SQL.
-5. Paste into SQL editor.
-6. Click **Run**.
-7. You should see success in results.
-8. Verify table exists:
+3. Run migration file:
+   - `supabase/migrations/001_create_profiles.sql`
+4. Copy full SQL from the file, paste into SQL Editor, and click **Run**.
+5. You should see success in results.
+6. Verify table exists:
 
 ```sql
 select tablename
@@ -71,11 +70,37 @@ https://<your-project>.vercel.app
 ## Step 4: Configure sign-in providers
 
 1. Left menu -> **Authentication -> Sign In / Providers**.
-2. Enable **Google**.
-3. Optional: enable **GitHub**.
-4. Save changes.
+2. Enable **Google** and **GitHub**.
+3. Save changes.
 
-If Google asks callback info, use Supabase provider instructions shown on that page.
+### 4.1 Google OAuth setup
+
+1. Open Google Cloud Console: https://console.cloud.google.com
+2. Create/select your project.
+3. Go to **APIs & Services -> Credentials**.
+4. Create **OAuth client ID** (type: **Web application**).
+5. Add redirect URI:
+
+```text
+https://<your-supabase-project-ref>.supabase.co/auth/v1/callback
+```
+
+6. Copy Google **Client ID** and **Client Secret**.
+7. Paste them into Supabase Google provider config and save.
+
+### 4.2 GitHub OAuth setup
+
+1. Open GitHub -> **Settings -> Developer settings -> OAuth Apps**.
+2. Click **New OAuth App**.
+3. Set **Homepage URL** to your app URL (for local dev: `http://localhost:3000`).
+4. Set **Authorization callback URL**:
+
+```text
+https://<your-supabase-project-ref>.supabase.co/auth/v1/callback
+```
+
+5. Create app and copy **Client ID** + generate **Client Secret**.
+6. Paste these into Supabase GitHub provider config and save.
 
 ---
 
@@ -123,4 +148,4 @@ After backend + frontend env vars are set:
 Common callback errors:
 - `missing_code`: redirect URL mismatch
 - `exchange_failed`: provider/client config mismatch
-- `domain`: expected for non-`@csvtu.ac.in` users
+- `domain`: expected for non-institutional users (allowed: `@csvtu.ac.in`, `@students.csvtu.ac.in`)

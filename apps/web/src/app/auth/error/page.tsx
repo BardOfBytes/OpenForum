@@ -5,7 +5,7 @@
  * The `reason` query param determines which message is shown.
  *
  * Reasons:
- * - `domain`         — User's email is not @csvtu.ac.in
+ * - `domain`         — User's email is not an allowed institutional domain
  * - `missing_code`   — OAuth callback received no authorization code
  * - `exchange_failed` — Code-to-session exchange failed
  * - `user_fetch_failed` — Could not retrieve user after auth
@@ -13,13 +13,16 @@
 
 import Link from "next/link";
 import { ROUTES } from "@/lib/routes";
+import { ALLOWED_EMAIL_DOMAINS, formatAllowedEmailDomains } from "@/lib/auth/allowed-email";
 
 /** Map of error reason codes to user-facing messages. */
 const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
   domain: {
     title: "Access Restricted",
     description:
-      "OpenForum is exclusively for UTD CSVTU students and faculty. Only @csvtu.ac.in email addresses are allowed. Please sign in with your institutional account.",
+      `OpenForum is exclusively for UTD CSVTU students and faculty. Only ${formatAllowedEmailDomains(
+        "and"
+      )} email addresses are allowed. Please sign in with your institutional account.`,
   },
   missing_code: {
     title: "Authentication Failed",
@@ -95,7 +98,13 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
         {isDomainError && (
           <div className="mb-6 rounded-lg bg-[#e8e6e0] p-4 text-left text-sm text-[#1a1917]">
             <p className="font-medium mb-1">Accepted email format:</p>
-            <code className="text-[#d4613c]">yourname@csvtu.ac.in</code>
+            <div className="space-y-1">
+              {ALLOWED_EMAIL_DOMAINS.map((domain) => (
+                <code key={domain} className="block text-[#d4613c]">
+                  yourname{domain}
+                </code>
+              ))}
+            </div>
           </div>
         )}
 

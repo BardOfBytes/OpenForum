@@ -35,36 +35,36 @@ async fn list_articles(
     let page = query.page();
     let per_page = query.per_page();
     let offset = ((page - 1) * per_page) as usize;
+    let category = query.category.clone();
 
-    let data = state
-        .articles
-        .get_posts(per_page as usize, offset, query.category.as_deref())
-        .await
-        .map_err(|error| {
-            tracing::error!(error = %error, "Failed to list articles from storage backend");
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(ErrorResponse {
-                    error: "articles_unavailable",
-                    message: "Unable to load articles from storage backend".to_string(),
-                }),
-            )
-        })?;
+    let (data_result, total_result) = tokio::join!(
+        state
+            .articles
+            .get_posts(per_page as usize, offset, category.as_deref()),
+        state.articles.count_posts(category.as_deref())
+    );
 
-    let total = state
-        .articles
-        .count_posts(query.category.as_deref())
-        .await
-        .map_err(|error| {
-            tracing::error!(error = %error, "Failed to count articles from storage backend");
-            (
-                StatusCode::BAD_GATEWAY,
-                Json(ErrorResponse {
-                    error: "articles_unavailable",
-                    message: "Unable to load article metadata from storage backend".to_string(),
-                }),
-            )
-        })?;
+    let data = data_result.map_err(|error| {
+        tracing::error!(error = %error, "Failed to list articles from storage backend");
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "articles_unavailable",
+                message: "Unable to load articles from storage backend".to_string(),
+            }),
+        )
+    })?;
+
+    let total = total_result.map_err(|error| {
+        tracing::error!(error = %error, "Failed to count articles from storage backend");
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "articles_unavailable",
+                message: "Unable to load article metadata from storage backend".to_string(),
+            }),
+        )
+    })?;
 
     Ok(Json(PaginatedResponse {
         data,

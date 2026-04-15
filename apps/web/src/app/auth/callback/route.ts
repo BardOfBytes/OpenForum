@@ -6,7 +6,7 @@
  *
  * 1. Exchanges the `code` query param for a Supabase session.
  * 2. **Enforces domain restriction**: checks the user's email ends
- *    with `@csvtu.ac.in`. If not, signs the user out and redirects
+ *    with `@csvtu.ac.in` or `@students.csvtu.ac.in`. If not, signs the user out and redirects
  *    to `/auth/error?reason=domain`.
  * 3. On success, creates/updates the user's profile in the `profiles`
  *    table and redirects to the originally requested page (or `/articles`).
@@ -22,9 +22,10 @@ import {
   ROUTES,
   normalizePostLoginRedirect,
 } from "@/lib/routes";
-
-/** The only allowed email domain for OpenForum registration. */
-const ALLOWED_DOMAIN = "@csvtu.ac.in";
+import {
+  formatAllowedEmailDomains,
+  isAllowedInstitutionalEmail,
+} from "@/lib/auth/allowed-email";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl;
@@ -84,12 +85,12 @@ export async function GET(request: NextRequest) {
   }
 
   // ──────────────────────────────────────────────────────────────
-  // DOMAIN RESTRICTION: Only @csvtu.ac.in emails are allowed.
+  // DOMAIN RESTRICTION: Only institutional emails are allowed.
   // ──────────────────────────────────────────────────────────────
   const email = user.email ?? "";
-  if (!email.endsWith(ALLOWED_DOMAIN)) {
+  if (!isAllowedInstitutionalEmail(email)) {
     console.warn(
-      `[auth/callback] Domain rejected: ${email} (expected *${ALLOWED_DOMAIN})`
+      `[auth/callback] Domain rejected: ${email} (expected ${formatAllowedEmailDomains("or")})`
     );
 
     // Sign the user out immediately — they should NOT have a session

@@ -44,6 +44,9 @@ export const metadata: Metadata = {
   description:
     "The student-run editorial and journalism platform for UTD CSVTU. " +
     "Campus news, opinions, investigations, and long-form stories.",
+  icons: {
+    icon: "/icon.png",
+  },
   keywords: [
     "OpenForum",
     "CSVTU",

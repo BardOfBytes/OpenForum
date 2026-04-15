@@ -5,7 +5,7 @@ import { getArticlesPage, type ArticleListItem } from "@/lib/api/articles";
 import { CATEGORY_CATALOG, categorySlugFromName } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 interface CategorySnapshot {
   count: number;

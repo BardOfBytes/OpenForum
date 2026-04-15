@@ -2,7 +2,7 @@
  * Sign Up Page — `/signup`
  *
  * Registers users with email/password using Supabase.
- * Access is restricted to `@csvtu.ac.in` addresses.
+ * Access is restricted to institutional addresses.
  */
 
 "use client";
@@ -16,12 +16,10 @@ import {
 } from "@/lib/routes";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
-
-const ALLOWED_DOMAIN = "@csvtu.ac.in";
-
-function isAllowedInstitutionalEmail(email: string): boolean {
-  return email.trim().toLowerCase().endsWith(ALLOWED_DOMAIN);
-}
+import {
+  formatAllowedEmailDomains,
+  isAllowedInstitutionalEmail,
+} from "@/lib/auth/allowed-email";
 
 function SignupForm() {
   const searchParams = useSearchParams();
@@ -50,7 +48,9 @@ function SignupForm() {
     }
 
     if (!isAllowedInstitutionalEmail(normalizedEmail)) {
-      setErrorMessage("Use your institutional @csvtu.ac.in email.");
+      setErrorMessage(
+        `Use your institutional ${formatAllowedEmailDomains("or")} email.`
+      );
       return;
     }
 
@@ -163,8 +163,7 @@ function SignupForm() {
 
         <div className="mt-6 rounded-lg bg-[#e8e6e0] p-4 text-center">
           <p className="text-xs text-[#6b6960] leading-relaxed">
-            Only <span className="font-medium text-[#1a1917]">@csvtu.ac.in</span>{" "}
-            addresses are allowed.
+            Only {formatAllowedEmailDomains("and")} addresses are allowed.
           </p>
         </div>
 

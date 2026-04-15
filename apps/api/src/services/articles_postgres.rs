@@ -139,6 +139,11 @@ impl PostgresArticlesService {
     }
 
     pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
+        let cache_key = crate::services::cache::keys::article_count(category);
+        if let Ok(Some(cached)) = self.cache.get::<u32>(&cache_key).await {
+            return Ok(cached);
+        }
+
         let count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*)
@@ -152,7 +157,17 @@ impl PostgresArticlesService {
         .await
         .context("Failed to count articles in Postgres")?;
 
-        Ok(count.max(0) as u32)
+        let total = count.max(0) as u32;
+        let _ = self
+            .cache
+            .set(
+                &cache_key,
+                &total,
+                crate::services::cache::ttl::ARTICLE_COUNT,
+            )
+            .await;
+
+        Ok(total)
     }
 
     pub async fn get_post_by_slug(&self, slug: &str) -> Result<Option<Article>> {

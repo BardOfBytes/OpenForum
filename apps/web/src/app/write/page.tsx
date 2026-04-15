@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/routes";
+import { isAllowedInstitutionalEmail } from "@/lib/auth/allowed-email";
 import WriteForm from "./WriteForm";
 
 export default async function WritePage() {
@@ -17,7 +18,7 @@ export default async function WritePage() {
 
   // Double check domain rule natively
   const email = user.email || "";
-  if (!email.endsWith("@csvtu.ac.in")) {
+  if (!isAllowedInstitutionalEmail(email)) {
     redirect(`${ROUTES.auth.error}?reason=domain`);
   }
 

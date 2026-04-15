@@ -588,6 +588,11 @@ impl SheetsService {
     pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
         let normalized_category = category.map(|value| value.trim().to_ascii_lowercase());
 
+        let cache_key = crate::services::cache::keys::article_count(category);
+        if let Ok(Some(cached)) = self.cache.get::<u32>(&cache_key).await {
+            return Ok(cached);
+        }
+
         if let Some(mock_posts) = &self.mock_posts {
             let posts = mock_posts.read().await.clone();
             let previews: Vec<ArticlePreview> = posts
@@ -604,7 +609,17 @@ impl SheetsService {
                 previews
             };
 
-            return Ok(filtered.len() as u32);
+            let total = filtered.len() as u32;
+            let _ = self
+                .cache
+                .set(
+                    &cache_key,
+                    &total,
+                    crate::services::cache::ttl::ARTICLE_COUNT,
+                )
+                .await;
+
+            return Ok(total);
         }
 
         let rows = self.read_range(POSTS_LIST_RANGE).await?;
@@ -618,7 +633,17 @@ impl SheetsService {
             previews.retain(|item| Self::category_slug(&item.category.name) == category_slug);
         }
 
-        Ok(previews.len() as u32)
+        let total = previews.len() as u32;
+        let _ = self
+            .cache
+            .set(
+                &cache_key,
+                &total,
+                crate::services::cache::ttl::ARTICLE_COUNT,
+            )
+            .await;
+
+        Ok(total)
     }
 
     pub async fn get_post_by_slug(&self, slug: &str) -> Result<Option<Article>> {

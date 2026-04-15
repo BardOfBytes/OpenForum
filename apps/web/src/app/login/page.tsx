@@ -2,7 +2,7 @@
  * Login Page — `/login`
  *
  * Provides OAuth and email/password sign-in.
- * Access is restricted to `@csvtu.ac.in` addresses.
+ * Access is restricted to institutional addresses.
  */
 
 "use client";
@@ -16,15 +16,13 @@ import {
 } from "@/lib/routes";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useState, type FormEvent } from "react";
+import {
+  formatAllowedEmailDomains,
+  isAllowedInstitutionalEmail,
+} from "@/lib/auth/allowed-email";
 
 type OAuthProvider = "google" | "github";
 type LoginMethod = OAuthProvider | "email";
-
-const ALLOWED_DOMAIN = "@csvtu.ac.in";
-
-function isAllowedInstitutionalEmail(email: string): boolean {
-  return email.trim().toLowerCase().endsWith(ALLOWED_DOMAIN);
-}
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -48,7 +46,6 @@ function LoginForm() {
         provider,
         options: {
           redirectTo: `${window.location.origin}${ROUTES.auth.callback}?next=${encodeURIComponent(redirect)}`,
-          queryParams: provider === "google" ? { hd: "csvtu.ac.in" } : undefined,
         },
       });
 
@@ -73,7 +70,9 @@ function LoginForm() {
     }
 
     if (!isAllowedInstitutionalEmail(email)) {
-      setErrorMessage("Use your institutional @csvtu.ac.in email.");
+      setErrorMessage(
+        `Use your institutional ${formatAllowedEmailDomains("or")} email.`
+      );
       return;
     }
 
@@ -182,8 +181,7 @@ function LoginForm() {
 
         <div className="mt-6 rounded-lg bg-[#e8e6e0] p-4 text-center">
           <p className="text-xs text-[#6b6960] leading-relaxed">
-            Only <span className="font-medium text-[#1a1917]">@csvtu.ac.in</span>{" "}
-            email addresses are accepted.
+            Only {formatAllowedEmailDomains("and")} email addresses are accepted.
           </p>
         </div>
 

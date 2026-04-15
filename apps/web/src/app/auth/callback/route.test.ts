@@ -100,6 +100,26 @@ describe("GET /auth/callback", () => {
     expect(mocks.upsert).toHaveBeenCalledTimes(1);
   });
 
+  it("accepts @students.csvtu.ac.in emails", async () => {
+    mocks.getUser.mockResolvedValueOnce({
+      data: {
+        user: {
+          id: "00000000-0000-0000-0000-000000000003",
+          email: "writer@students.csvtu.ac.in",
+          user_metadata: { full_name: "Writer Student" },
+        },
+      },
+      error: null,
+    });
+
+    const request = new NextRequest("http://localhost/auth/callback?code=abc123");
+    const response = await GET(request);
+
+    expect(mocks.signOut).not.toHaveBeenCalled();
+    expect(response.headers.get("location")).toBe("http://localhost/articles");
+    expect(mocks.upsert).toHaveBeenCalledTimes(1);
+  });
+
   it("redirects valid users to sanitized next param", async () => {
     const request = new NextRequest(
       "http://localhost/auth/callback?code=abc123&next=%2Fwrite"

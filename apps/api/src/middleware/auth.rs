@@ -23,7 +23,7 @@
 //! 1. RS256 signature validation against Supabase JWKS (or HS256 with local secret)
 //! 2. Token expiry check (built into `jsonwebtoken`)
 //! 3. Audience validation (`authenticated`)
-//! 4. Email domain restriction (`@csvtu.ac.in`)
+//! 4. Email domain restriction (`@csvtu.ac.in`, `@students.csvtu.ac.in`)
 
 use axum::{
     Json,
@@ -45,8 +45,15 @@ use uuid::Uuid;
 /// How long to cache the JWKS before refetching (1 hour).
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(3600);
 
-/// Allowed email domain suffix.
-const ALLOWED_DOMAIN: &str = "@csvtu.ac.in";
+/// Allowed email domain suffixes.
+const ALLOWED_DOMAINS: [&str; 2] = ["@csvtu.ac.in", "@students.csvtu.ac.in"];
+
+fn is_allowed_email_domain(email: &str) -> bool {
+    let normalized = email.trim().to_ascii_lowercase();
+    ALLOWED_DOMAINS
+        .iter()
+        .any(|domain| normalized.ends_with(domain))
+}
 
 // ── JWKS Cache ──────────────────────────────────────────────────
 
@@ -271,7 +278,7 @@ enum AuthErrorKind {
     InvalidFormat,
     /// JWT signature, expiry, or claims validation failed.
     InvalidToken(String),
-    /// Email domain is not @csvtu.ac.in.
+    /// Email domain is not in the institutional allowlist.
     DomainRestriction,
     /// Server-side issue (JWKS fetch failure, missing config).
     ServerError(String),
@@ -298,7 +305,8 @@ impl IntoResponse for AuthErrorKind {
             AuthErrorKind::DomainRestriction => (
                 StatusCode::FORBIDDEN,
                 "domain_restricted",
-                "Only @csvtu.ac.in email addresses are allowed".to_string(),
+                "Only @csvtu.ac.in or @students.csvtu.ac.in email addresses are allowed"
+                    .to_string(),
             ),
             AuthErrorKind::ServerError(msg) => {
                 tracing::error!(error = %msg, "Auth server error");
@@ -410,7 +418,7 @@ where
         // ── Step 8: Extract and validate email domain ───────────
         let email = claims.email.clone().unwrap_or_default();
 
-        if !email.ends_with(ALLOWED_DOMAIN) {
+        if !is_allowed_email_domain(&email) {
             tracing::warn!(
                 email = %email,
                 "Rejected login: email domain not allowed"
