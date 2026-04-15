@@ -8,10 +8,10 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openforum_api::{
     build_app,
-    config::{AppConfig, CloudinaryConfig, StorageProvider},
+    config::{AppConfig, ArticlesProvider, CloudinaryConfig, StorageProvider},
     services::{
-        cache::CacheService, cloudinary::CloudinaryService, drive::DriveService,
-        sheets::SheetsService,
+        articles::ArticlesService, cache::CacheService, cloudinary::CloudinaryService,
+        drive::DriveService, sheets::SheetsService,
     },
     state::AppState,
 };
@@ -26,8 +26,10 @@ fn test_config() -> AppConfig {
         port: 3001,
         frontend_url: "http://localhost:3000".to_string(),
         supabase_url: "http://localhost:54321".to_string(),
-        google_sheets_id: "spreadsheet-id".to_string(),
-        google_service_account_json: "{}".to_string(),
+        articles_provider: ArticlesProvider::Sheets,
+        google_sheets_id: Some("spreadsheet-id".to_string()),
+        google_service_account_json: Some("{}".to_string()),
+        database_url: None,
         google_drive_folder_id: Some("drive-folder-id".to_string()),
         storage_provider: StorageProvider::Drive,
         cloudinary: None,
@@ -39,7 +41,7 @@ fn test_config() -> AppConfig {
 fn app_state_with_test_services() -> AppState {
     let cache = CacheService::for_tests();
     AppState {
-        sheets: Arc::new(SheetsService::for_tests(vec![])),
+        articles: ArticlesService::Sheets(Arc::new(SheetsService::for_tests(vec![]))),
         drive: Some(Arc::new(DriveService::for_tests())),
         cloudinary: None,
         storage_provider: StorageProvider::Drive,
@@ -50,7 +52,7 @@ fn app_state_with_test_services() -> AppState {
 fn app_state_with_cloudinary_uploads() -> AppState {
     let cache = CacheService::for_tests();
     AppState {
-        sheets: Arc::new(SheetsService::for_tests(vec![])),
+        articles: ArticlesService::Sheets(Arc::new(SheetsService::for_tests(vec![]))),
         drive: None,
         cloudinary: Some(Arc::new(CloudinaryService::for_tests())),
         storage_provider: StorageProvider::Cloudinary,
@@ -72,7 +74,7 @@ fn app_state_with_failing_sheets() -> AppState {
     .expect("failing sheets constructor should still parse service account json");
 
     AppState {
-        sheets: Arc::new(sheets),
+        articles: ArticlesService::Sheets(Arc::new(sheets)),
         drive: Some(Arc::new(DriveService::for_tests())),
         cloudinary: None,
         storage_provider: StorageProvider::Drive,
@@ -90,7 +92,7 @@ fn app_state_with_failing_drive() -> AppState {
         .expect("failing drive constructor should still parse service account json");
 
     AppState {
-        sheets: Arc::new(SheetsService::for_tests(vec![])),
+        articles: ArticlesService::Sheets(Arc::new(SheetsService::for_tests(vec![]))),
         drive: Some(Arc::new(drive)),
         cloudinary: None,
         storage_provider: StorageProvider::Drive,

@@ -9,6 +9,12 @@ use std::time::Duration;
 const MAX_FILE_SIZE: usize = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp"];
 
+// Applied at upload time so the stored asset is smaller.
+// - c_limit: keep aspect ratio, only downscale
+// - w/h: cap dimensions
+// - q_auto:good: Cloudinary chooses a reasonable quality setting
+const INCOMING_TRANSFORMATION: &str = "c_limit,w_1600,h_1600,q_auto:good";
+
 /// Cloudinary upload service.
 #[derive(Debug, Clone)]
 pub struct CloudinaryService {
@@ -122,6 +128,8 @@ impl CloudinaryService {
             form = form.text("folder", folder.clone());
         }
 
+        form = form.text("transformation", INCOMING_TRANSFORMATION.to_string());
+
         let part = Part::bytes(data.to_vec())
             .file_name(filename.to_string())
             .mime_str(mime_type)
@@ -162,6 +170,8 @@ impl CloudinaryService {
         if let Some(folder) = self.upload_folder.as_ref() {
             params.push(("folder", folder.clone()));
         }
+
+        params.push(("transformation", INCOMING_TRANSFORMATION.to_string()));
 
         params.sort_by(|(left, _), (right, _)| left.cmp(right));
 

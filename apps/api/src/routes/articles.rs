@@ -37,11 +37,11 @@ async fn list_articles(
     let offset = ((page - 1) * per_page) as usize;
 
     let data = state
-        .sheets
+        .articles
         .get_posts(per_page as usize, offset, query.category.as_deref())
         .await
         .map_err(|error| {
-            tracing::error!(error = %error, "Failed to list articles from Sheets");
+            tracing::error!(error = %error, "Failed to list articles from storage backend");
             (
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
@@ -52,11 +52,11 @@ async fn list_articles(
         })?;
 
     let total = state
-        .sheets
+        .articles
         .count_posts(query.category.as_deref())
         .await
         .map_err(|error| {
-            tracing::error!(error = %error, "Failed to count articles from Sheets");
+            tracing::error!(error = %error, "Failed to count articles from storage backend");
             (
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
@@ -79,11 +79,15 @@ async fn get_article(
     Path(slug): Path<String>,
 ) -> Result<Json<Article>, (StatusCode, Json<ErrorResponse>)> {
     let article = state
-        .sheets
+        .articles
         .get_post_by_slug(&slug)
         .await
         .map_err(|error| {
-            tracing::error!(error = %error, slug = %slug, "Failed to fetch article from Sheets");
+            tracing::error!(
+                error = %error,
+                slug = %slug,
+                "Failed to fetch article from storage backend"
+            );
             (
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
@@ -107,7 +111,7 @@ async fn get_article(
     };
 
     // Views tracking is best-effort and should not break reads.
-    if let Err(error) = state.sheets.update_post_views(&slug).await {
+    if let Err(error) = state.articles.update_post_views(&slug).await {
         tracing::warn!(error = %error, slug = %slug, "Failed to increment article views");
     }
 
@@ -140,17 +144,21 @@ async fn create_article(
     };
 
     let mut article = state
-        .sheets
+        .articles
         .create_post(sanitized_payload, user.user_id)
         .await
         .map_err(|error| {
-            tracing::error!(error = %error, user_id = %user.user_id, "Failed to create article in Sheets");
+            tracing::error!(
+                error = %error,
+                user_id = %user.user_id,
+                "Failed to create article in storage backend"
+            );
             (
                 StatusCode::BAD_GATEWAY,
                 Json(ErrorResponse {
                     error: "article_create_failed",
                     message:
-                        "Unable to create article in storage backend. Verify Google Sheets access and posts sheet setup."
+                        "Unable to create article in storage backend. Verify the configured backend is reachable and credentials are correct."
                             .to_string(),
                 }),
             )
