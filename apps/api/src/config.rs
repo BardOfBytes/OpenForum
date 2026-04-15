@@ -20,9 +20,7 @@ impl StorageProvider {
         match normalized.as_str() {
             "drive" | "google_drive" | "google-drive" | "gdrive" => Ok(Self::Drive),
             "cloudinary" => Ok(Self::Cloudinary),
-            _ => bail!(
-                "Invalid STORAGE_PROVIDER '{raw}'. Supported values: drive, cloudinary"
-            ),
+            _ => bail!("Invalid STORAGE_PROVIDER '{raw}'. Supported values: drive, cloudinary"),
         }
     }
 }
@@ -110,7 +108,10 @@ impl AppConfig {
 }
 
 fn optional_env(key: &str) -> Option<String> {
-    env::var(key).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty())
+    env::var(key)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
 }
 
 fn required_env(key: &str) -> Result<String> {

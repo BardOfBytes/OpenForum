@@ -196,8 +196,8 @@ async fn upload_image(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         Json(ErrorResponse {
                             error: "upload_unavailable",
-                            message:
-                                "Drive upload is not configured on this deployment".to_string(),
+                            message: "Drive upload is not configured on this deployment"
+                                .to_string(),
                         }),
                     )
                 })?;

@@ -6,7 +6,10 @@ use anyhow::Context;
 use openforum_api::{
     build_app,
     config::{AppConfig, StorageProvider},
-    services::{cache::CacheService, cloudinary::CloudinaryService, drive::DriveService, sheets::SheetsService},
+    services::{
+        cache::CacheService, cloudinary::CloudinaryService, drive::DriveService,
+        sheets::SheetsService,
+    },
     state::AppState,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -42,9 +45,10 @@ async fn main() -> anyhow::Result<()> {
 
     let (drive, cloudinary) = match config.storage_provider {
         StorageProvider::Drive => {
-            let folder_id = config.google_drive_folder_id.clone().context(
-                "GOOGLE_DRIVE_FOLDER_ID is required when STORAGE_PROVIDER=drive",
-            )?;
+            let folder_id = config
+                .google_drive_folder_id
+                .clone()
+                .context("GOOGLE_DRIVE_FOLDER_ID is required when STORAGE_PROVIDER=drive")?;
             let drive = DriveService::new(folder_id, config.google_service_account_json.clone())
                 .context("Failed to initialize Google Drive service")?;
             (Some(Arc::new(drive)), None)
