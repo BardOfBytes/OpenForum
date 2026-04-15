@@ -57,12 +57,14 @@ CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
 -- Anyone can read profiles (public author pages, article bylines)
+DROP POLICY IF EXISTS "Profiles are publicly readable" ON public.profiles;
 CREATE POLICY "Profiles are publicly readable"
   ON public.profiles
   FOR SELECT
   USING (true);
 
 -- Users can only update their own profile
+DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile"
   ON public.profiles
   FOR UPDATE
@@ -70,6 +72,7 @@ CREATE POLICY "Users can update their own profile"
   WITH CHECK (auth.uid() = id);
 
 -- Users can insert their own profile (first sign-in via callback)
+DROP POLICY IF EXISTS "Users can insert their own profile" ON public.profiles;
 CREATE POLICY "Users can insert their own profile"
   ON public.profiles
   FOR INSERT
@@ -92,6 +95,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, public;
 
+DROP TRIGGER IF EXISTS on_profile_updated ON public.profiles;
 CREATE TRIGGER on_profile_updated
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW
@@ -124,6 +128,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, public;
 
+DROP TRIGGER IF EXISTS enforce_csvtu_domain ON public.profiles;
 CREATE TRIGGER enforce_csvtu_domain
   BEFORE INSERT OR UPDATE ON public.profiles
   FOR EACH ROW
