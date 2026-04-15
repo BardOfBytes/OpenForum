@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ROUTES } from "@/lib/routes";
 import { isAllowedInstitutionalEmail } from "@/lib/auth/allowed-email";
 import WriteForm from "./WriteForm";
+
+export const metadata: Metadata = {
+  title: "Write",
+};
 
 export default async function WritePage() {
   const supabase = await createClient();

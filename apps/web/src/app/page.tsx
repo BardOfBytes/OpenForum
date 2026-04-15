@@ -14,6 +14,7 @@
  */
 
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { HeroSection } from "@/components/home/HeroSection";
@@ -22,6 +23,12 @@ import { CategoriesBar } from "@/components/home/CategoriesBar";
 import { FeaturedArticle } from "@/components/home/FeaturedArticle";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
 import { ROUTES } from "@/lib/routes";
+
+export const metadata: Metadata = {
+  title: {
+    absolute: "Home \\ OpenForum",
+  },
+};
 
 export const dynamic = "force-dynamic";
 

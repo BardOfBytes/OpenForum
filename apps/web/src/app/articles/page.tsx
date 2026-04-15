@@ -1,9 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import { getArticles } from "@/lib/api/articles";
 import { ROUTES } from "@/lib/routes";
+
+export const metadata: Metadata = {
+  title: "Articles",
+};
 
 export const revalidate = 60;
 

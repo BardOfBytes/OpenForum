@@ -1,9 +1,14 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { getArticlesPage, type ArticleListItem } from "@/lib/api/articles";
 import { CATEGORY_CATALOG, categorySlugFromName } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
+
+export const metadata: Metadata = {
+  title: "Categories",
+};
 
 export const revalidate = 60;
 

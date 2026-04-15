@@ -20,7 +20,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -41,6 +41,14 @@ const NAV_LINKS = [
   { label: "Categories", href: ROUTES.categories },
   { label: "About", href: ROUTES.about },
 ] as const;
+
+/** Full-width brand text width (px) before it collapses into the pipe mark. */
+const BRAND_TEXT_EXPANDED_WIDTH = 170;
+/** Full-width of expanded brand block (pipe + text) for collapse animation. */
+const BRAND_EXPANDED_WIDTH = 196;
+/** Dimensions of collapsed logo icon shown after scroll. */
+const BRAND_COLLAPSED_LOGO_WIDTH = 44;
+const BRAND_COLLAPSED_LOGO_HEIGHT = 32;
 
 /* ─────────────────────────────────────────────────────────────
    HOOKS
@@ -144,6 +152,7 @@ const menuItemVariants = {
 
 export function Navbar() {
   const scrolled = useScrolled();
+  const reduceMotion = useReducedMotion();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading: userLoading } = useUser();
@@ -200,17 +209,107 @@ export function Navbar() {
           {/* ── Logo ──────────────────────────────────────── */}
           <Link
             href={ROUTES.home}
-            className="flex items-center gap-2 group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md pr-1"
+            className="flex items-center group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md pr-1"
             aria-label="OpenForum home"
           >
-            {/* Terracotta accent mark */}
-            <div
-              className="w-2 h-6 rounded-full bg-accent transition-transform duration-normal group-hover:scale-y-110"
-              aria-hidden="true"
-            />
-            <span className="font-heading font-semibold text-lg tracking-tight text-text">
-              OpenForum
-            </span>
+            {/*
+              Scroll-reactive brand animation:
+              - At top: pipe + "OpenForum"
+              - On scroll: expanded brand collapses and full icon logo appears
+            */}
+            <motion.span
+              className="flex items-center overflow-hidden"
+              initial={false}
+              animate={
+                reduceMotion
+                  ? {
+                      maxWidth: scrolled ? 0 : BRAND_EXPANDED_WIDTH,
+                      opacity: scrolled ? 0 : 1,
+                    }
+                  : {
+                      maxWidth: scrolled ? 0 : BRAND_EXPANDED_WIDTH,
+                      opacity: scrolled ? 0 : 1,
+                    }
+              }
+              transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+              aria-hidden={scrolled}
+            >
+              <div
+                className="w-2 h-6 rounded-full bg-accent transition-transform duration-normal group-hover:scale-y-110"
+                aria-hidden="true"
+              />
+
+              <motion.span
+                className="block overflow-hidden"
+                initial={false}
+                animate={
+                  reduceMotion
+                    ? { maxWidth: BRAND_TEXT_EXPANDED_WIDTH, marginLeft: 8, opacity: 1 }
+                    : {
+                        maxWidth: scrolled ? 0 : BRAND_TEXT_EXPANDED_WIDTH,
+                        marginLeft: scrolled ? 0 : 8,
+                        opacity: scrolled ? 0 : 1,
+                      }
+                }
+                transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+                aria-hidden="true"
+              >
+                <motion.span
+                  className="block whitespace-nowrap font-heading font-semibold text-lg tracking-tight text-text"
+                  initial={false}
+                  animate={
+                    reduceMotion
+                      ? { x: 0 }
+                      : {
+                          x: scrolled ? -28 : 0,
+                        }
+                  }
+                  transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+                >
+                  OpenForum
+                </motion.span>
+              </motion.span>
+            </motion.span>
+
+            <motion.span
+              className="block overflow-hidden"
+              initial={false}
+              animate={
+                reduceMotion
+                  ? {
+                      maxWidth: scrolled ? BRAND_COLLAPSED_LOGO_WIDTH : 0,
+                      opacity: scrolled ? 1 : 0,
+                    }
+                  : {
+                      maxWidth: scrolled ? BRAND_COLLAPSED_LOGO_WIDTH : 0,
+                      opacity: scrolled ? 1 : 0,
+                    }
+              }
+              transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+              aria-hidden={!scrolled}
+            >
+              <motion.span
+                className="block"
+                initial={false}
+                animate={
+                  reduceMotion
+                    ? { x: 0 }
+                    : {
+                        x: scrolled ? 0 : -10,
+                      }
+                }
+                transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+              >
+                <Image
+                  src="/icon.png"
+                  alt="OpenForum"
+                  width={BRAND_COLLAPSED_LOGO_WIDTH}
+                  height={BRAND_COLLAPSED_LOGO_HEIGHT}
+                  className="h-8 w-auto max-w-none"
+                  priority
+                />
+              </motion.span>
+            </motion.span>
           </Link>
 
           {/* ── Desktop Links ─────────────────────────────── */}

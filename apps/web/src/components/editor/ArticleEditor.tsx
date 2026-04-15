@@ -88,6 +88,7 @@ export default function ArticleEditor({
     }`;
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({
         heading: {

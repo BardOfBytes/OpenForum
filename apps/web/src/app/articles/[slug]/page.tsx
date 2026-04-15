@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -16,6 +18,26 @@ export const dynamic = "force-dynamic";
 
 interface ArticleDetailPageProps {
   params: Promise<{ slug: string }>;
+}
+
+const getArticleBySlugCached = cache(async (slug: string) => getArticleBySlug(slug));
+
+export async function generateMetadata({ params }: ArticleDetailPageProps): Promise<Metadata> {
+  const { slug } = await params;
+
+  try {
+    const article = await getArticleBySlugCached(slug);
+    return {
+      title: {
+        absolute: article.title,
+      },
+      description: article.excerpt,
+    };
+  } catch {
+    return {
+      title: "Article",
+    };
+  }
 }
 
 function formatDate(iso: string): string {
@@ -56,7 +78,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
   const { slug } = await params;
 
   try {
-    const article = await getArticleBySlug(slug);
+    const article = await getArticleBySlugCached(slug);
     const resolvedBody = stripLeadingCoverImage(article.body, article.coverImageUrl);
     const categorySlug = categorySlugFromName(article.category.name);
     const knownCategory = getCategoryBySlug(categorySlug);

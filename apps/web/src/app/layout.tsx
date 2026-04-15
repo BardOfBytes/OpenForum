@@ -38,14 +38,14 @@ const fraunces = Fraunces({
 /** Global metadata for OpenForum — SEO baseline. */
 export const metadata: Metadata = {
   title: {
-    template: "%s | OpenForum",
-    default: "OpenForum — Student Editorial Platform",
+    template: "%s \\ OpenForum",
+    default: "OpenForum",
   },
   description:
     "The student-run editorial and journalism platform for UTD CSVTU. " +
     "Campus news, opinions, investigations, and long-form stories.",
   icons: {
-    icon: "./icon.png",
+    icon: "/icon.png",
   },
   keywords: [
     "OpenForum",
