@@ -8,8 +8,11 @@ use chrono::{Duration, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use openforum_api::{
     build_app,
-    config::AppConfig,
-    services::{cache::CacheService, drive::DriveService, sheets::SheetsService},
+    config::{AppConfig, CloudinaryConfig, StorageProvider},
+    services::{
+        cache::CacheService, cloudinary::CloudinaryService, drive::DriveService,
+        sheets::SheetsService,
+    },
     state::AppState,
 };
 use serde::Serialize;
@@ -25,7 +28,9 @@ fn test_config() -> AppConfig {
         supabase_url: "http://localhost:54321".to_string(),
         google_sheets_id: "spreadsheet-id".to_string(),
         google_service_account_json: "{}".to_string(),
-        google_drive_folder_id: "drive-folder-id".to_string(),
+        google_drive_folder_id: Some("drive-folder-id".to_string()),
+        storage_provider: StorageProvider::Drive,
+        cloudinary: None,
         redis_url: "redis://127.0.0.1:6379".to_string(),
         redis_token: "unused".to_string(),
     }
@@ -35,7 +40,20 @@ fn app_state_with_test_services() -> AppState {
     let cache = CacheService::for_tests();
     AppState {
         sheets: Arc::new(SheetsService::for_tests(vec![])),
-        drive: Arc::new(DriveService::for_tests()),
+        drive: Some(Arc::new(DriveService::for_tests())),
+        cloudinary: None,
+        storage_provider: StorageProvider::Drive,
+        cache: Arc::new(cache),
+    }
+}
+
+fn app_state_with_cloudinary_uploads() -> AppState {
+    let cache = CacheService::for_tests();
+    AppState {
+        sheets: Arc::new(SheetsService::for_tests(vec![])),
+        drive: None,
+        cloudinary: Some(Arc::new(CloudinaryService::for_tests())),
+        storage_provider: StorageProvider::Cloudinary,
         cache: Arc::new(cache),
     }
 }
@@ -55,7 +73,9 @@ fn app_state_with_failing_sheets() -> AppState {
 
     AppState {
         sheets: Arc::new(sheets),
-        drive: Arc::new(DriveService::for_tests()),
+        drive: Some(Arc::new(DriveService::for_tests())),
+        cloudinary: None,
+        storage_provider: StorageProvider::Drive,
         cache: Arc::new(CacheService::for_tests()),
     }
 }
@@ -71,7 +91,9 @@ fn app_state_with_failing_drive() -> AppState {
 
     AppState {
         sheets: Arc::new(SheetsService::for_tests(vec![])),
-        drive: Arc::new(drive),
+        drive: Some(Arc::new(drive)),
+        cloudinary: None,
+        storage_provider: StorageProvider::Drive,
         cache: Arc::new(CacheService::for_tests()),
     }
 }
@@ -291,4 +313,44 @@ async fn drive_failure_returns_structured_non_200_error() {
     let json = json_body(response).await;
     assert_eq!(json["error"], "upload_failed");
     assert!(json["message"].as_str().is_some());
+}
+
+#[tokio::test]
+async fn cloudinary_upload_happy_path_returns_201() {
+    // Ensure Cloudinary config types stay usable from the public API.
+    let _ = CloudinaryConfig {
+        cloud_name: "test".to_string(),
+        api_key: "test".to_string(),
+        api_secret: "test".to_string(),
+        upload_folder: Some("tests".to_string()),
+    };
+
+    let app = test_app(app_state_with_cloudinary_uploads());
+    let token = test_auth_token("writer@csvtu.ac.in");
+
+    let boundary = "----openforum-test-boundary";
+    let body = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"photo.png\"\r\nContent-Type: image/png\r\n\r\nnot-a-real-image\r\n--{boundary}--\r\n"
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/upload")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header(
+                    "content-type",
+                    format!("multipart/form-data; boundary={boundary}"),
+                )
+                .body(Body::from(body))
+                .expect("upload request"),
+        )
+        .await
+        .expect("upload response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let json = json_body(response).await;
+    assert!(json["file_id"].as_str().is_some());
+    assert!(json["public_url"].as_str().is_some());
 }

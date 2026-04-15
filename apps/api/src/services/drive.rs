@@ -201,6 +201,25 @@ impl DriveService {
                 .text()
                 .await
                 .unwrap_or_else(|_| "<unavailable>".to_string());
+
+            if status == reqwest::StatusCode::NOT_FOUND {
+                bail!(
+                    "Google Drive upload folder '{}' was not found or is not accessible by service account '{}'. Ensure GOOGLE_DRIVE_FOLDER_ID points to an existing Shared Drive folder and that this service account has at least Content manager access. Upstream response: {}",
+                    self.folder_id,
+                    self.service_email,
+                    error_body
+                );
+            }
+
+            if status == reqwest::StatusCode::FORBIDDEN {
+                bail!(
+                    "Google Drive denied folder metadata access for GOOGLE_DRIVE_FOLDER_ID '{}' to service account '{}'. Grant Content manager access on the Shared Drive. Upstream response: {}",
+                    self.folder_id,
+                    self.service_email,
+                    error_body
+                );
+            }
+
             bail!("Google Drive folder metadata returned HTTP {status}: {error_body}");
         }
 

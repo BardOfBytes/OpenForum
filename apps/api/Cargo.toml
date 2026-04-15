@@ -25,8 +25,8 @@ anyhow = "1"
 # Auth — JWT RS256 validation
 jsonwebtoken = "9"
 
-# HTTP client (Google Sheets/Drive API)
-reqwest = { version = "0.12", features = ["json"] }
+# HTTP client (Google Sheets/Drive API + Cloudinary uploads)
+reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 # Redis (Upstash — caching & rate limiting)
 redis = { version = "0.27", features = ["tokio-comp", "aio", "tokio-rustls-comp"] }
@@ -45,6 +45,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 slug = "0.1"
+
+# Cloudinary signed uploads
+hex = "0.4"
+sha1 = "0.10"
 
 [profile.release]
 opt-level = 3
