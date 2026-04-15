@@ -6,7 +6,7 @@ import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
 import {
   Image as ImageIcon,
@@ -28,6 +28,7 @@ interface ArticleEditorProps {
   initialContent?: string;
   sessionToken: string;
   onChange: (html: string) => void;
+  autosaveEnabled?: boolean;
 }
 
 const STORAGE_KEY = "draft_article_body";
@@ -70,8 +71,14 @@ export default function ArticleEditor({
   initialContent = "",
   sessionToken,
   onChange,
+  autosaveEnabled = true,
 }: ArticleEditorProps) {
   const [saveIndicator, setSaveIndicator] = useState("");
+  const autosaveEnabledRef = useRef(autosaveEnabled);
+
+  useEffect(() => {
+    autosaveEnabledRef.current = autosaveEnabled;
+  }, [autosaveEnabled]);
 
   const toolbarButtonClass = (active = false) =>
     `p-2 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
@@ -118,6 +125,10 @@ export default function ArticleEditor({
     if (!editor) return;
 
     const interval = setInterval(() => {
+      if (!autosaveEnabledRef.current) {
+        return;
+      }
+
       const html = editor.getHTML();
       if (!isEditorContentEmpty(html)) {
         localStorage.setItem(STORAGE_KEY, html);
@@ -127,7 +138,7 @@ export default function ArticleEditor({
     }, 30000); // 30 seconds
 
     return () => clearInterval(interval);
-  }, [editor, sessionToken]);
+  }, [editor]);
 
   const handleSetLink = useCallback(() => {
     if (!editor) return;

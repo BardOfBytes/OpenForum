@@ -14,7 +14,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { ROUTES } from "@/lib/routes";
 
@@ -53,6 +53,7 @@ const underlineVariants = {
 };
 
 export function HeroSection() {
+  const router = useRouter();
   const headlineWords = ["Every", "Student", "Has", "a"];
 
   return (
@@ -88,14 +89,6 @@ export function HeroSection() {
         animate="visible"
         className="container-editorial text-center max-w-4xl px-6 py-20 md:py-32"
       >
-        {/* Label */}
-        <motion.div variants={itemVariants} className="mb-8">
-          <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-subtle text-accent text-xs font-medium font-body uppercase tracking-widest border border-accent/10">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" aria-hidden="true" />
-            UTD CSVTU Student Publication
-          </span>
-        </motion.div>
-
         {/* Headline — word-by-word reveal */}
         <h1 className="font-heading font-semibold text-text tracking-tight leading-none text-balance mb-6">
           {headlineWords.map((word, i) => (
@@ -135,51 +128,38 @@ export function HeroSection() {
           variants={itemVariants}
           className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4"
         >
-          <Link href={ROUTES.articles}>
-            <Button variant="primary" size="lg">
-              Start Reading
+          <Button
+            type="button"
+            variant="primary"
+            size="lg"
+            onClick={() => router.push(ROUTES.articles)}
+            iconRight={
               <svg
-                className="w-4 h-4 ml-1"
+                className="w-4 h-4"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
                 strokeWidth={2}
                 aria-hidden="true"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+                />
               </svg>
-            </Button>
-          </Link>
-          <Link href={ROUTES.login}>
-            <Button variant="secondary" size="lg">
-              Write for Us
-            </Button>
-          </Link>
-        </motion.div>
-
-        {/* Scroll indicator */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.8, duration: 0.6 }}
-          className="mt-16 md:mt-24 flex flex-col items-center gap-2 text-text-tertiary"
-        >
-          <span className="text-xs font-body uppercase tracking-widest">Scroll to explore</span>
-          <motion.div
-            animate={{ y: [0, 6, 0] }}
-            transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+            }
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-              aria-hidden="true"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3" />
-            </svg>
-          </motion.div>
+            Start Reading
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            onClick={() => router.push(ROUTES.login)}
+          >
+            Write for Us
+          </Button>
         </motion.div>
       </motion.div>
     </section>

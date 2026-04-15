@@ -30,11 +30,34 @@ function formatDate(iso: string): string {
   }
 }
 
+function stripLeadingCoverImage(bodyHtml: string, coverUrl: string | null): string {
+  const cover = coverUrl?.trim();
+  if (!cover) {
+    return bodyHtml;
+  }
+
+  const match = bodyHtml.match(
+    /^\s*(?:<(?:p|figure)[^>]*>\s*)?(<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["'][^>]*>\s*)(?:<\/(?:p|figure)>\s*)?/i
+  );
+
+  if (!match) {
+    return bodyHtml;
+  }
+
+  const leadingSrc = match[2]?.trim();
+  if (!leadingSrc || leadingSrc !== cover) {
+    return bodyHtml;
+  }
+
+  return bodyHtml.slice(match[0].length).replace(/^\s+/, "");
+}
+
 export default async function ArticleDetailPage({ params }: ArticleDetailPageProps) {
   const { slug } = await params;
 
   try {
     const article = await getArticleBySlug(slug);
+    const resolvedBody = stripLeadingCoverImage(article.body, article.coverImageUrl);
     const categorySlug = categorySlugFromName(article.category.name);
     const knownCategory = getCategoryBySlug(categorySlug);
 
@@ -124,7 +147,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
 
             <div
               className="prose prose-lg max-w-none"
-              dangerouslySetInnerHTML={{ __html: article.body }}
+              dangerouslySetInnerHTML={{ __html: resolvedBody }}
             />
 
             {article.tags.length > 0 && (
@@ -166,7 +189,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
                   </Link>
                 </div>
 
-                <ArticleGrid articles={relatedArticles} />
+                <ArticleGrid articles={relatedArticles} maxColumns={2} />
               </section>
             )}
 

@@ -235,6 +235,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           initialContent={initialContent}
           sessionToken={sessionToken}
           onChange={setContentHtml}
+          autosaveEnabled={!isSubmitting}
         />
       </div>
 
