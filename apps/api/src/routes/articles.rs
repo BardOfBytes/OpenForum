@@ -244,10 +244,7 @@ fn remove_non_youtube_iframe_blocks(html: &str) -> String {
         };
 
         let src = extract_attr_value(opening_tag, "src");
-        if src
-            .as_deref()
-            .is_some_and(is_allowed_youtube_embed_src)
-        {
+        if src.as_deref().is_some_and(is_allowed_youtube_embed_src) {
             output.push_str(&html[start..block_end]);
         }
 
