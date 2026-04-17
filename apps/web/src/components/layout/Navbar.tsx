@@ -42,13 +42,15 @@ const NAV_LINKS = [
   { label: "About", href: ROUTES.about },
 ] as const;
 
-/** Full-width brand text width (px) before it collapses into the pipe mark. */
-const BRAND_TEXT_EXPANDED_WIDTH = 170;
-/** Full-width of expanded brand block (pipe + text) for collapse animation. */
-const BRAND_EXPANDED_WIDTH = 196;
 /** Dimensions of collapsed logo icon shown after scroll. */
 const BRAND_COLLAPSED_LOGO_WIDTH = 44;
 const BRAND_COLLAPSED_LOGO_HEIGHT = 32;
+
+interface NavbarProps {
+  brandText?: string;
+  collapsedLogoSrc?: string;
+  collapsedLogoAlt?: string;
+}
 
 /* ─────────────────────────────────────────────────────────────
    HOOKS
@@ -150,12 +152,19 @@ const menuItemVariants = {
    COMPONENT
    ───────────────────────────────────────────────────────────── */
 
-export function Navbar() {
+export function Navbar({
+  brandText = "OpenForum",
+  collapsedLogoSrc = "/icon.png",
+  collapsedLogoAlt = "OpenForum",
+}: NavbarProps = {}) {
   const scrolled = useScrolled();
   const reduceMotion = useReducedMotion();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading: userLoading } = useUser();
+
+  const brandTextExpandedWidth = Math.max(170, Math.min(360, brandText.length * 11));
+  const brandExpandedWidth = brandTextExpandedWidth + 20;
 
   /** Close mobile menu on route change. */
   useEffect(() => {
@@ -223,11 +232,11 @@ export function Navbar() {
               animate={
                 reduceMotion
                   ? {
-                      maxWidth: scrolled ? 0 : BRAND_EXPANDED_WIDTH,
+                      maxWidth: scrolled ? 0 : brandExpandedWidth,
                       opacity: scrolled ? 0 : 1,
                     }
                   : {
-                      maxWidth: scrolled ? 0 : BRAND_EXPANDED_WIDTH,
+                      maxWidth: scrolled ? 0 : brandExpandedWidth,
                       opacity: scrolled ? 0 : 1,
                     }
               }
@@ -244,9 +253,9 @@ export function Navbar() {
                 initial={false}
                 animate={
                   reduceMotion
-                    ? { maxWidth: BRAND_TEXT_EXPANDED_WIDTH, marginLeft: 8, opacity: 1 }
+                    ? { maxWidth: brandTextExpandedWidth, marginLeft: 8, opacity: 1 }
                     : {
-                        maxWidth: scrolled ? 0 : BRAND_TEXT_EXPANDED_WIDTH,
+                        maxWidth: scrolled ? 0 : brandTextExpandedWidth,
                         marginLeft: scrolled ? 0 : 8,
                         opacity: scrolled ? 0 : 1,
                       }
@@ -266,7 +275,7 @@ export function Navbar() {
                   }
                   transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
                 >
-                  OpenForum
+                  {brandText}
                 </motion.span>
               </motion.span>
             </motion.span>
@@ -301,8 +310,8 @@ export function Navbar() {
                 transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
               >
                 <Image
-                  src="/icon.png"
-                  alt="OpenForum"
+                  src={collapsedLogoSrc}
+                  alt={collapsedLogoAlt}
                   width={BRAND_COLLAPSED_LOGO_WIDTH}
                   height={BRAND_COLLAPSED_LOGO_HEIGHT}
                   className="h-8 w-auto max-w-none"

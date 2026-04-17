@@ -6,6 +6,7 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
+use reqwest::Url;
 use serde::Serialize;
 
 use crate::middleware::auth::AuthUser;
@@ -13,6 +14,14 @@ use crate::models::article::{
     Article, ArticleListQuery, ArticlePreview, Author, Category, NewArticle,
 };
 use crate::state::AppState;
+
+const YOUTUBE_EMBED_HOSTS: &[&str] = &[
+    "www.youtube.com",
+    "youtube.com",
+    "www.youtube-nocookie.com",
+    "youtube-nocookie.com",
+    "m.youtube.com",
+];
 
 #[derive(Serialize)]
 pub struct PaginatedResponse<T: Serialize> {
@@ -123,7 +132,7 @@ async fn create_article(
     user: AuthUser,
     Json(payload): Json<NewArticle>,
 ) -> Result<(StatusCode, Json<Article>), (StatusCode, Json<ErrorResponse>)> {
-    let clean_body = ammonia::clean(&payload.body);
+    let clean_body = sanitize_article_body(&payload.body);
     let read_time = (clean_body.split_whitespace().count() / 200).max(1) as u16;
     let category_name = payload.category_name.clone();
     let author_name = user
@@ -187,6 +196,110 @@ async fn create_article(
     );
 
     Ok((StatusCode::CREATED, Json(article)))
+}
+
+fn sanitize_article_body(raw_html: &str) -> String {
+    let mut cleaner = ammonia::Builder::default();
+    cleaner.add_tags(std::iter::once("iframe"));
+    cleaner.add_tag_attributes(
+        "iframe",
+        [
+            "allow",
+            "allowfullscreen",
+            "frameborder",
+            "height",
+            "loading",
+            "referrerpolicy",
+            "src",
+            "title",
+            "width",
+        ],
+    );
+
+    let cleaned = cleaner.clean(raw_html).to_string();
+    remove_non_youtube_iframe_blocks(&cleaned)
+}
+
+fn remove_non_youtube_iframe_blocks(html: &str) -> String {
+    let lowercase = html.to_ascii_lowercase();
+    let mut output = String::with_capacity(html.len());
+    let mut cursor = 0;
+
+    while let Some(start_rel) = lowercase[cursor..].find("<iframe") {
+        let start = cursor + start_rel;
+        output.push_str(&html[cursor..start]);
+
+        let Some(tag_end_rel) = lowercase[start..].find('>') else {
+            cursor = html.len();
+            break;
+        };
+
+        let tag_end = start + tag_end_rel + 1;
+        let opening_tag = &html[start..tag_end];
+
+        let block_end = if let Some(close_rel) = lowercase[tag_end..].find("</iframe>") {
+            tag_end + close_rel + "</iframe>".len()
+        } else {
+            tag_end
+        };
+
+        let src = extract_attr_value(opening_tag, "src");
+        if src
+            .as_deref()
+            .is_some_and(is_allowed_youtube_embed_src)
+        {
+            output.push_str(&html[start..block_end]);
+        }
+
+        cursor = block_end;
+    }
+
+    output.push_str(&html[cursor..]);
+    output
+}
+
+fn extract_attr_value(tag_html: &str, attr_name: &str) -> Option<String> {
+    let lowercase = tag_html.to_ascii_lowercase();
+
+    let double_quoted = format!("{attr_name}=\"");
+    if let Some(start) = lowercase.find(&double_quoted) {
+        let value_start = start + double_quoted.len();
+        let remainder = &tag_html[value_start..];
+        let end = remainder.find('"')?;
+        return Some(remainder[..end].to_string());
+    }
+
+    let single_quoted = format!("{attr_name}='");
+    if let Some(start) = lowercase.find(&single_quoted) {
+        let value_start = start + single_quoted.len();
+        let remainder = &tag_html[value_start..];
+        let end = remainder.find('\'')?;
+        return Some(remainder[..end].to_string());
+    }
+
+    None
+}
+
+fn is_allowed_youtube_embed_src(src: &str) -> bool {
+    let parsed = match Url::parse(src) {
+        Ok(url) => url,
+        Err(_) => return false,
+    };
+
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return false;
+    }
+
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+
+    let normalized_host = host.to_ascii_lowercase();
+    if !YOUTUBE_EMBED_HOSTS.contains(&normalized_host.as_str()) {
+        return false;
+    }
+
+    parsed.path().starts_with("/embed/")
 }
 
 fn category_color_hex(category_name: &str) -> &str {

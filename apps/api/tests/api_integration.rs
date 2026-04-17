@@ -265,6 +265,52 @@ async fn article_create_authenticated_flow_returns_201_with_slug() {
 }
 
 #[tokio::test]
+async fn article_create_keeps_youtube_iframe_and_drops_unsafe_html() {
+    let app = test_app(app_state_with_test_services());
+    let token = test_auth_token("writer@csvtu.ac.in");
+
+    let payload = json!({
+      "title": "Embedded Media Article",
+      "body": "<p>Video intro</p><iframe src=\"https://www.youtube.com/embed/dQw4w9WgXcQ\" title=\"YouTube video\" allowfullscreen></iframe><iframe src=\"https://evil.example.com/embed/tracker\"></iframe><script>alert('xss')</script>",
+      "excerpt": "Video intro",
+      "content_gdoc_id": null,
+      "cover_image_url": null,
+      "category_name": "Tech & AI",
+      "tags": ["video"]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    let stored_html = body["body"].as_str().expect("body html string");
+
+    assert!(
+        stored_html.contains("youtube.com/embed/dQw4w9WgXcQ"),
+        "expected YouTube iframe src to be preserved"
+    );
+    assert!(
+        !stored_html.contains("evil.example.com"),
+        "expected non-YouTube iframe to be removed"
+    );
+    assert!(
+        !stored_html.to_ascii_lowercase().contains("<script"),
+        "expected script tags to be removed"
+    );
+}
+
+#[tokio::test]
 async fn sheets_failure_returns_structured_non_200_error() {
     let app = test_app(app_state_with_failing_sheets());
 

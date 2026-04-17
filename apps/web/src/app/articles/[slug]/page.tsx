@@ -168,7 +168,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
             </div>
 
             <div
-              className="prose prose-lg max-w-none"
+              className="article-content prose prose-lg max-w-none"
               dangerouslySetInnerHTML={{ __html: resolvedBody }}
             />
 

@@ -5,6 +5,7 @@ export const ROUTES = {
   write: "/write",
   articles: "/articles",
   categories: "/categories",
+  shinchan: "/shinchan",
   categoryLegacy: "/category",
   about: "/about",
   guidelines: "/guidelines",

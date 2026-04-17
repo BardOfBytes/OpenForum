@@ -1,0 +1,104 @@
+.editorSurface :global(.ProseMirror) {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.editorSurface :global(.ProseMirror p.is-editor-empty:first-child::before) {
+  color: #9a978e;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.editorSurface :global(.ProseMirror mark) {
+  background: #fef08a;
+  border-radius: 0.25rem;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: 0 0.12rem;
+}
+
+.editorSurface :global(.ProseMirror table) {
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 1rem 0;
+  width: 100%;
+}
+
+.editorSurface :global(.ProseMirror table th),
+.editorSurface :global(.ProseMirror table td) {
+  border: 1px solid #d1cfc8;
+  min-width: 100px;
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+}
+
+.editorSurface :global(.ProseMirror table th) {
+  background: #f6f5f0;
+  font-weight: 600;
+}
+
+.editorSurface :global(.ProseMirror ul:not([data-type="taskList"])) {
+  list-style-type: disc;
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.editorSurface :global(.ProseMirror ol) {
+  list-style-type: decimal;
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.editorSurface :global(.ProseMirror li) {
+  margin: 0.25rem 0;
+}
+
+.editorSurface :global(.ProseMirror li::marker) {
+  color: #3f3e3a;
+}
+
+.editorSurface :global(.ProseMirror ul[data-type="taskList"]) {
+  list-style: none;
+  margin: 1rem 0;
+  padding-left: 0;
+}
+
+.editorSurface :global(.ProseMirror ul[data-type="taskList"] li) {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.editorSurface :global(.ProseMirror ul[data-type="taskList"] li > label) {
+  margin-top: 0.1rem;
+}
+
+.editorSurface :global(.ProseMirror ul[data-type="taskList"] li > div) {
+  flex: 1;
+}
+
+.editorSurface :global(.ProseMirror iframe) {
+  aspect-ratio: 16 / 9;
+  border: 0;
+  border-radius: 12px;
+  margin: 1rem 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.editorSurface :global(.ProseMirror [data-type="inline-math"]) {
+  background: #f6f5f0;
+  border: 1px solid #e4e2dc;
+  border-radius: 6px;
+  padding: 0.1rem 0.3rem;
+}
+
+.editorSurface :global(.ProseMirror [data-type="block-math"]) {
+  background: #fdfbf6;
+  border: 1px solid #e4e2dc;
+  border-radius: 12px;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}

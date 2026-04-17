@@ -312,6 +312,31 @@
     padding-right: var(--space-6);
   }
 
+  .article-content ul {
+    list-style: disc;
+    margin: var(--space-4) 0;
+    padding-left: var(--space-6);
+  }
+
+  .article-content ol {
+    list-style: decimal;
+    margin: var(--space-4) 0;
+    padding-left: var(--space-6);
+  }
+
+  .article-content li {
+    margin: var(--space-1) 0;
+  }
+
+  .article-content iframe {
+    aspect-ratio: 16 / 9;
+    border: 0;
+    border-radius: var(--radius-xl);
+    margin: var(--space-6) 0;
+    max-width: 100%;
+    width: 100%;
+  }
+
   /* Decorative horizontal rule — editorial divider */
   .divider-editorial {
     border: none;

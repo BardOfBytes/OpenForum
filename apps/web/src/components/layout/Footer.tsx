@@ -11,10 +11,18 @@
  */
 
 import Link from "next/link";
+import Image from "next/image";
 import { ROUTES } from "@/lib/routes";
 
+interface SocialLink {
+  label: string;
+  href: string;
+  icon: React.ReactNode;
+  internal?: boolean;
+}
+
 /** Social link data. */
-const SOCIAL_LINKS = [
+const SOCIAL_LINKS: SocialLink[] = [
   {
     label: "Instagram",
     href: "https://instagram.com/openforum_csvtu",
@@ -48,6 +56,20 @@ const SOCIAL_LINKS = [
           clipRule="evenodd"
         />
       </svg>
+    ),
+  },
+  {
+    label: "Shinchan Tribute",
+    href: ROUTES.shinchan,
+    internal: true,
+    icon: (
+      <Image
+        src="/shinchan/Shinchan.png"
+        alt="Shinchan"
+        width={20}
+        height={20}
+        className="w-5 h-5 rounded-full"
+      />
     ),
   },
 ];
@@ -87,16 +109,27 @@ export function Footer() {
             {/* Social links */}
             <div className="flex items-center gap-3">
               {SOCIAL_LINKS.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text hover:bg-surface-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                  aria-label={social.label}
-                >
-                  {social.icon}
-                </a>
+                social.internal ? (
+                  <Link
+                    key={social.label}
+                    href={social.href}
+                    className="flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text hover:bg-surface-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    aria-label={social.label}
+                  >
+                    {social.icon}
+                  </Link>
+                ) : (
+                  <a
+                    key={social.label}
+                    href={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center w-9 h-9 rounded-lg text-text-tertiary hover:text-text hover:bg-surface-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    aria-label={social.label}
+                  >
+                    {social.icon}
+                  </a>
+                )
               ))}
             </div>
           </div>

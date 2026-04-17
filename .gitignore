@@ -55,4 +55,5 @@ yarn-error.log*
 # Docker
 # ========================
 docker-compose.override.yml
-supabase/migrations/
+supabase/
+email-draft/
