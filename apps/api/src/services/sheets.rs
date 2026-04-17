@@ -542,7 +542,7 @@ impl SheetsService {
                 .map(ArticlePreview::from)
                 .filter(|item| Self::is_feed_visible_status(&item.status))
                 .collect();
-            previews.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            previews.sort_by_key(|item| std::cmp::Reverse(item.created_at));
             let filtered = if let Some(category_slug) = normalized_category.as_deref() {
                 previews
                     .into_iter()
@@ -571,7 +571,7 @@ impl SheetsService {
             previews.retain(|item| Self::category_slug(&item.category.name) == category_slug);
         }
 
-        previews.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        previews.sort_by_key(|item| std::cmp::Reverse(item.created_at));
         let result: Vec<ArticlePreview> = previews.into_iter().skip(offset).take(limit).collect();
 
         let _ = self

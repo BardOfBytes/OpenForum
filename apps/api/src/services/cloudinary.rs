@@ -173,7 +173,7 @@ impl CloudinaryService {
 
         params.push(("transformation", INCOMING_TRANSFORMATION.to_string()));
 
-        params.sort_by(|(left, _), (right, _)| left.cmp(right));
+        params.sort_by_key(|(left, _)| *left);
 
         let base = params
             .iter()
