@@ -21,6 +21,14 @@ interface ArticleDetailPageProps {
 }
 
 const getArticleBySlugCached = cache(async (slug: string) => getArticleBySlug(slug));
+const YOUTUBE_EMBED_HOSTS = new Set([
+  "www.youtube.com",
+  "youtube.com",
+  "www.youtube-nocookie.com",
+  "youtube-nocookie.com",
+  "m.youtube.com",
+  "youtu.be",
+]);
 
 export async function generateMetadata({ params }: ArticleDetailPageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -74,12 +82,99 @@ function stripLeadingCoverImage(bodyHtml: string, coverUrl: string | null): stri
   return bodyHtml.slice(match[0].length).replace(/^\s+/, "");
 }
 
+function normalizeYoutubeEmbedUrl(rawUrl: string): string | null {
+  try {
+    const parsed = new URL(rawUrl.trim());
+    const host = parsed.hostname.toLowerCase();
+
+    if (!YOUTUBE_EMBED_HOSTS.has(host)) {
+      return null;
+    }
+
+    if (host === "youtu.be") {
+      const videoId = parsed.pathname.replace(/^\/+/, "").split("/")[0];
+      if (!videoId) {
+        return null;
+      }
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+
+    if (parsed.pathname.startsWith("/embed/")) {
+      return parsed.toString();
+    }
+
+    if (parsed.pathname === "/watch") {
+      const videoId = parsed.searchParams.get("v")?.trim();
+      if (!videoId) {
+        return null;
+      }
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function extractLeadingYoutubeEmbed(bodyHtml: string): {
+  videoUrl: string | null;
+  bodyWithoutVideo: string;
+} {
+  const match = bodyHtml.match(
+    /^\s*(?:<(?:div|figure)[^>]*>\s*)?<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>\s*<\/iframe>\s*(?:<\/(?:div|figure)>\s*)?/i
+  );
+
+  if (!match) {
+    return {
+      videoUrl: null,
+      bodyWithoutVideo: bodyHtml,
+    };
+  }
+
+  const normalizedVideoUrl = normalizeYoutubeEmbedUrl(match[1] ?? "");
+  if (!normalizedVideoUrl) {
+    return {
+      videoUrl: null,
+      bodyWithoutVideo: bodyHtml,
+    };
+  }
+
+  return {
+    videoUrl: normalizedVideoUrl,
+    bodyWithoutVideo: bodyHtml.slice(match[0].length).replace(/^\s+/, ""),
+  };
+}
+
+function youtubeThumbnailFromEmbedUrl(embedUrl: string | null): string | null {
+  if (!embedUrl) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(embedUrl);
+    const [, , videoId] = parsed.pathname.split("/");
+
+    if (!videoId) {
+      return null;
+    }
+
+    return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ArticleDetailPage({ params }: ArticleDetailPageProps) {
   const { slug } = await params;
 
   try {
     const article = await getArticleBySlugCached(slug);
     const resolvedBody = stripLeadingCoverImage(article.body, article.coverImageUrl);
+    const { videoUrl: leadingVideoUrl, bodyWithoutVideo } = extractLeadingYoutubeEmbed(
+      resolvedBody
+    );
+    const heroMediaUrl = article.coverImageUrl ?? youtubeThumbnailFromEmbedUrl(leadingVideoUrl);
     const categorySlug = categorySlugFromName(article.category.name);
     const knownCategory = getCategoryBySlug(categorySlug);
 
@@ -143,10 +238,10 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
             </div>
 
             <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-surface min-h-[220px] relative">
-              {article.coverImageUrl ? (
+              {heroMediaUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={article.coverImageUrl}
+                  src={heroMediaUrl}
                   alt=""
                   className="w-full h-full max-h-[460px] object-cover"
                 />
@@ -167,9 +262,23 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
               )}
             </div>
 
+            {leadingVideoUrl && (
+              <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-bg-elevated shadow-sm">
+                <iframe
+                  src={leadingVideoUrl}
+                  title={`${article.title} video`}
+                  className="block w-full aspect-video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                />
+              </div>
+            )}
+
             <div
               className="article-content prose prose-lg max-w-none"
-              dangerouslySetInnerHTML={{ __html: resolvedBody }}
+              dangerouslySetInnerHTML={{ __html: bodyWithoutVideo }}
             />
 
             {article.tags.length > 0 && (
