@@ -200,7 +200,10 @@ async fn create_article(
 
 fn sanitize_article_body(raw_html: &str) -> String {
     let mut cleaner = ammonia::Builder::default();
-    cleaner.add_tags(std::iter::once("iframe"));
+    cleaner.add_tags([
+        "iframe", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup",
+        "col",
+    ]);
     cleaner.add_tag_attributes(
         "iframe",
         [
@@ -215,6 +218,13 @@ fn sanitize_article_body(raw_html: &str) -> String {
             "width",
         ],
     );
+    cleaner.add_tag_attributes("th", ["colspan", "rowspan", "colwidth"]);
+    cleaner.add_tag_attributes("td", ["colspan", "rowspan", "colwidth"]);
+    cleaner.add_tag_attributes("col", ["width"]);
+    cleaner.add_tag_attributes("span", ["class", "data-latex", "data-type"]);
+    cleaner.add_tag_attributes("div", ["class", "data-latex", "data-type"]);
+    cleaner.add_tag_attributes("code", ["class"]);
+    cleaner.add_tag_attributes("pre", ["class"]);
 
     let cleaned = cleaner.clean(raw_html).to_string();
     remove_non_youtube_iframe_blocks(&cleaned)

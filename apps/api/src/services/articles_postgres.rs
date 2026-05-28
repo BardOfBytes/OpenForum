@@ -5,7 +5,9 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::article::{Article, ArticlePreview, Author, Category, NewArticle};
+use crate::models::article::{
+    Article, ArticlePreview, Author, Category, NewArticle, youtube_thumbnail_from_html,
+};
 
 #[derive(Debug, Clone)]
 pub struct PostgresArticlesService {
@@ -19,6 +21,7 @@ struct ArticlePreviewRow {
     slug: String,
     title: String,
     excerpt: String,
+    body: String,
     content_gdoc_id: Option<String>,
     tags: Vec<String>,
     status: String,
@@ -72,6 +75,7 @@ impl PostgresArticlesService {
               slug,
               title,
               excerpt,
+                            body,
               content_gdoc_id,
               tags,
               status,
@@ -100,6 +104,11 @@ impl PostgresArticlesService {
             .into_iter()
             .map(|row| {
                 let read_time_minutes = read_time_minutes(&row.excerpt);
+                let preview_image_url = row
+                    .cover_image_url
+                    .clone()
+                    .or_else(|| youtube_thumbnail_from_html(&row.body));
+
                 ArticlePreview {
                     id: row.id,
                     title: row.title,
@@ -112,6 +121,7 @@ impl PostgresArticlesService {
                     updated_at: row.updated_at,
                     views: row.views.max(0) as u32,
                     cover_image_url: row.cover_image_url,
+                    preview_image_url,
                     category: Category {
                         name: row.category_name.clone(),
                         color: category_color_hex(&row.category_name).to_string(),

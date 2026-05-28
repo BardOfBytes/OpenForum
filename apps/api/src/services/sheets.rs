@@ -1,6 +1,8 @@
 //! Google Sheets read/write abstraction.
 
-use crate::models::article::{Article, ArticlePreview, Author, Category, NewArticle};
+use crate::models::article::{
+    Article, ArticlePreview, Author, Category, NewArticle, youtube_thumbnail_from_html,
+};
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
@@ -439,6 +441,9 @@ impl SheetsService {
             .filter(|value| !value.is_empty())
             .map(ToString::to_string);
         let body = row.get(13).map(|value| value.trim()).unwrap_or("");
+        let preview_image_url = cover_image_url
+            .clone()
+            .or_else(|| youtube_thumbnail_from_html(body));
         let word_source = if body.is_empty() { row[3].trim() } else { body };
         let read_time_minutes = (word_source.split_whitespace().count() / 200).max(1) as u16;
 
@@ -470,6 +475,7 @@ impl SheetsService {
             updated_at,
             views,
             cover_image_url,
+            preview_image_url,
             category: Category {
                 name: category_name,
                 color: category_color.to_string(),

@@ -58,20 +58,20 @@ const SOCIAL_LINKS: SocialLink[] = [
       </svg>
     ),
   },
-  {
-    label: "Shinchan Tribute",
-    href: ROUTES.shinchan,
-    internal: true,
-    icon: (
-      <Image
-        src="/shinchan/Shinchan.png"
-        alt="Shinchan"
-        width={20}
-        height={20}
-        className="w-5 h-5 rounded-full"
-      />
-    ),
-  },
+  // {
+  //   label: "Shinchan Tribute",
+  //   href: ROUTES.shinchan,
+  //   internal: true,
+  //   icon: (
+  //     <Image
+  //       src="/shinchan/Shinchan.png"
+  //       alt="Shinchan"
+  //       width={20}
+  //       height={20}
+  //       className="w-5 h-5 rounded-full"
+  //     />
+  //   ),
+  // },
 ];
 
 const FOOTER_NAV = [

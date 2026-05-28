@@ -2,8 +2,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound } from "next/navigation";
+import katex from "katex";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { ArticleContent } from "@/components/articles/ArticleContent";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import {
   ApiHttpError,
@@ -146,23 +148,70 @@ function extractLeadingYoutubeEmbed(bodyHtml: string): {
   };
 }
 
-function youtubeThumbnailFromEmbedUrl(embedUrl: string | null): string | null {
-  if (!embedUrl) {
-    return null;
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function extractAttrValue(tagHtml: string, attrName: string): string | null {
+  const doubleQuoted = new RegExp(`${attrName}\\s*=\\s*\"([^\"]*)\"`, "i");
+  const singleQuoted = new RegExp(`${attrName}\\s*=\\s*'([^']*)'`, "i");
+
+  const doubleMatch = tagHtml.match(doubleQuoted);
+  if (doubleMatch?.[1]) {
+    return decodeHtmlEntities(doubleMatch[1]);
   }
 
-  try {
-    const parsed = new URL(embedUrl);
-    const [, , videoId] = parsed.pathname.split("/");
+  const singleMatch = tagHtml.match(singleQuoted);
+  if (singleMatch?.[1]) {
+    return decodeHtmlEntities(singleMatch[1]);
+  }
 
-    if (!videoId) {
-      return null;
+  return null;
+}
+
+function renderMathNodes(bodyHtml: string): string {
+  return bodyHtml.replace(
+    /<(span|div)\b[^>]*\bdata-type\s*=\s*["'](inline-math|block-math)["'][^>]*>\s*<\/(span|div)>/gi,
+    (fullMatch, _tagName, mathKind) => {
+      const latex = extractAttrValue(fullMatch, "data-latex")?.trim();
+      if (!latex) {
+        return fullMatch;
+      }
+
+      try {
+        const katexHtml = katex.renderToString(latex, {
+          displayMode: mathKind === "block-math",
+          throwOnError: false,
+          strict: false,
+        });
+
+        if (mathKind === "block-math") {
+          return `<div class="katex-block">${katexHtml}</div>`;
+        }
+
+        return `<span class="katex-inline">${katexHtml}</span>`;
+      } catch {
+        if (mathKind === "block-math") {
+          return `<pre class="math-fallback">${escapeHtml(latex)}</pre>`;
+        }
+        return `<code class="math-fallback">${escapeHtml(latex)}</code>`;
+      }
     }
-
-    return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
-  } catch {
-    return null;
-  }
+  );
 }
 
 export default async function ArticleDetailPage({ params }: ArticleDetailPageProps) {
@@ -174,7 +223,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
     const { videoUrl: leadingVideoUrl, bodyWithoutVideo } = extractLeadingYoutubeEmbed(
       resolvedBody
     );
-    const heroMediaUrl = article.coverImageUrl ?? youtubeThumbnailFromEmbedUrl(leadingVideoUrl);
+    const renderedBody = renderMathNodes(bodyWithoutVideo);
     const categorySlug = categorySlugFromName(article.category.name);
     const knownCategory = getCategoryBySlug(categorySlug);
 
@@ -238,10 +287,10 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
             </div>
 
             <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-surface min-h-[220px] relative">
-              {heroMediaUrl ? (
+              {article.coverImageUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={heroMediaUrl}
+                  src={article.coverImageUrl}
                   alt=""
                   className="w-full h-full max-h-[460px] object-cover"
                 />
@@ -276,10 +325,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
               </div>
             )}
 
-            <div
-              className="article-content prose prose-lg max-w-none"
-              dangerouslySetInnerHTML={{ __html: bodyWithoutVideo }}
-            />
+            <ArticleContent html={renderedBody} />
 
             {article.tags.length > 0 && (
               <div className="mt-12 pt-6 border-t border-border-light">

@@ -65,6 +65,7 @@ pub struct ArticlePreview {
 
     // Virtual fields joined at runtime
     pub cover_image_url: Option<String>,
+    pub preview_image_url: Option<String>,
     pub category: Category,
     pub author: Author,
     pub read_time_minutes: u16,
@@ -105,6 +106,11 @@ impl ArticleListQuery {
 
 impl From<&Article> for ArticlePreview {
     fn from(article: &Article) -> Self {
+        let preview_image_url = article
+            .cover_image_url
+            .clone()
+            .or_else(|| youtube_thumbnail_from_html(&article.body));
+
         Self {
             id: article.id,
             title: article.title.clone(),
@@ -118,6 +124,7 @@ impl From<&Article> for ArticlePreview {
             views: article.views,
 
             cover_image_url: article.cover_image_url.clone(),
+            preview_image_url,
             category: article.category_detail.clone().unwrap_or(Category {
                 name: article.category.clone(),
                 color: "#d4613c".to_string(), // Default fallback
@@ -130,4 +137,85 @@ impl From<&Article> for ArticlePreview {
             read_time_minutes: article.read_time_minutes,
         }
     }
+}
+
+pub fn youtube_thumbnail_from_html(html: &str) -> Option<String> {
+    let src = extract_first_iframe_src(html)?;
+    let video_id = youtube_video_id_from_url(&src)?;
+    Some(format!("https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"))
+}
+
+fn extract_first_iframe_src(html: &str) -> Option<String> {
+    let lowercase = html.to_ascii_lowercase();
+    let iframe_start = lowercase.find("<iframe")?;
+
+    let segment = &html[iframe_start..];
+    let segment_lowercase = &lowercase[iframe_start..];
+
+    let double_quoted = "src=\"";
+    if let Some(position) = segment_lowercase.find(double_quoted) {
+        let value_start = position + double_quoted.len();
+        let remainder = &segment[value_start..];
+        let value_end = remainder.find('"')?;
+        let src = remainder[..value_end].trim();
+        if !src.is_empty() {
+            return Some(src.to_string());
+        }
+    }
+
+    let single_quoted = "src='";
+    if let Some(position) = segment_lowercase.find(single_quoted) {
+        let value_start = position + single_quoted.len();
+        let remainder = &segment[value_start..];
+        let value_end = remainder.find('\'')?;
+        let src = remainder[..value_end].trim();
+        if !src.is_empty() {
+            return Some(src.to_string());
+        }
+    }
+
+    None
+}
+
+fn youtube_video_id_from_url(url: &str) -> Option<String> {
+    let lowered = url.to_ascii_lowercase();
+
+    for marker in [
+        "youtube.com/embed/",
+        "youtube-nocookie.com/embed/",
+        "m.youtube.com/embed/",
+        "youtu.be/",
+    ] {
+        if let Some(start_index) = lowered.find(marker) {
+            let value_start = start_index + marker.len();
+            let remainder = &url[value_start..];
+            let video_id = remainder
+                .split(['?', '&', '#', '/'])
+                .next()
+                .unwrap_or("")
+                .trim();
+
+            if !video_id.is_empty() {
+                return Some(video_id.to_string());
+            }
+        }
+    }
+
+    if let Some(query_start) = lowered.find('?') {
+        let query = &url[(query_start + 1)..];
+        for pair in query.split('&') {
+            let mut parts = pair.splitn(2, '=');
+            let key = parts.next().unwrap_or("").trim();
+            let value = parts.next().unwrap_or("").trim();
+
+            if key == "v" && !value.is_empty() {
+                let video_id = value.split(['#', '/']).next().unwrap_or("").trim();
+                if !video_id.is_empty() {
+                    return Some(video_id.to_string());
+                }
+            }
+        }
+    }
+
+    None
 }

@@ -36,6 +36,7 @@ interface ApiArticlePreview {
   title: string;
   excerpt: string;
   cover_image_url: string | null;
+  preview_image_url: string | null;
   created_at: string;
   category: ApiCategory;
   author: ApiAuthor;
@@ -115,7 +116,7 @@ function mapPreview(article: ApiArticlePreview): ArticleListItem {
     slug: article.slug,
     title: article.title,
     excerpt: article.excerpt,
-    coverImageUrl: article.cover_image_url,
+    coverImageUrl: article.cover_image_url ?? article.preview_image_url,
     category: article.category,
     author: {
       name: article.author.name,

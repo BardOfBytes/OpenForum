@@ -311,6 +311,95 @@ async fn article_create_keeps_youtube_iframe_and_drops_unsafe_html() {
 }
 
 #[tokio::test]
+async fn article_create_keeps_table_markup_for_rendering() {
+    let app = test_app(app_state_with_test_services());
+    let token = test_auth_token("writer@csvtu.ac.in");
+
+    let payload = json!({
+      "title": "Table Formatting Article",
+      "body": "<p>Scores</p><table><thead><tr><th>Subject</th><th>Score</th></tr></thead><tbody><tr><td>Math</td><td>98</td></tr></tbody></table>",
+      "excerpt": "Scores",
+      "content_gdoc_id": null,
+      "cover_image_url": null,
+      "category_name": "Editorials",
+      "tags": ["table"]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    let stored_html = body["body"].as_str().expect("body html string");
+
+    assert!(stored_html.contains("<table>"), "expected table tag to be preserved");
+    assert!(stored_html.contains("<thead>"), "expected thead tag to be preserved");
+    assert!(stored_html.contains("<tbody>"), "expected tbody tag to be preserved");
+    assert!(stored_html.contains("<th>Subject</th>"), "expected header cell to be preserved");
+    assert!(stored_html.contains("<td>98</td>"), "expected data cell to be preserved");
+}
+
+#[tokio::test]
+async fn article_create_keeps_math_nodes_and_code_language_class() {
+    let app = test_app(app_state_with_test_services());
+    let token = test_auth_token("writer@csvtu.ac.in");
+
+    let payload = json!({
+      "title": "Math And Code Article",
+      "body": "<p>Equation</p><span data-type=\"inline-math\" data-latex=\"E=mc^2\"></span><div data-type=\"block-math\" data-latex=\"\\\\sum_{i=1}^{n} x_i\"></div><pre><code class=\"language-rust\">fn main() { println!(\"hi\"); }</code></pre>",
+      "excerpt": "Equation",
+      "content_gdoc_id": null,
+      "cover_image_url": null,
+      "category_name": "Tech & AI",
+      "tags": ["math", "code"]
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(payload.to_string()))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    let stored_html = body["body"].as_str().expect("body html string");
+
+    assert!(
+        stored_html.contains("data-type=\"inline-math\""),
+        "expected inline math marker to be preserved"
+    );
+    assert!(
+        stored_html.contains("data-type=\"block-math\""),
+        "expected block math marker to be preserved"
+    );
+    assert!(
+        stored_html.contains("data-latex=\"E=mc^2\""),
+        "expected inline math latex to be preserved"
+    );
+    assert!(
+        stored_html.contains("language-rust"),
+        "expected code language class to be preserved"
+    );
+}
+
+#[tokio::test]
 async fn sheets_failure_returns_structured_non_200_error() {
     let app = test_app(app_state_with_failing_sheets());
 
