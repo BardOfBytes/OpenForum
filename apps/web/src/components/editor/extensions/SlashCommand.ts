@@ -46,10 +46,10 @@ function getMenuShellStyles(): Partial<CSSStyleDeclaration> {
     maxWidth: "360px",
     maxHeight: "320px",
     overflowY: "auto",
-    background: "#fffdf7",
-    border: "1px solid #d1cfc8",
+    background: "var(--color-bg-elevated)",
+    border: "1px solid var(--color-border)",
     borderRadius: "12px",
-    boxShadow: "0 16px 30px rgba(26, 25, 23, 0.12)",
+    boxShadow: "var(--shadow-lg)",
     padding: "8px",
   };
 }
@@ -61,8 +61,8 @@ function getMenuItemStyles(selected: boolean): Partial<CSSStyleDeclaration> {
     textAlign: "left",
     borderRadius: "10px",
     border: "1px solid transparent",
-    background: selected ? "#f5ddd3" : "transparent",
-    color: "#1a1917",
+    background: selected ? "var(--color-accent-light)" : "transparent",
+    color: "var(--color-text)",
     padding: "8px 10px",
     cursor: "pointer",
     transition: "background 120ms ease, border-color 120ms ease",
@@ -147,7 +147,7 @@ function createSlashRenderer() {
       const emptyState = document.createElement("div");
       emptyState.textContent = "No matching commands";
       applyStyles(emptyState, {
-        color: "#6b6960",
+        color: "var(--color-text-secondary)",
         fontSize: "13px",
         padding: "8px 10px",
       });
@@ -178,7 +178,7 @@ function createSlashRenderer() {
       applyStyles(description, {
         fontSize: "12px",
         marginTop: "2px",
-        color: "#6b6960",
+        color: "var(--color-text-secondary)",
       });
 
       button.appendChild(title);

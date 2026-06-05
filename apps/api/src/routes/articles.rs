@@ -4,15 +4,17 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
 };
 use reqwest::Url;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, UserRole};
 use crate::models::article::{
     Article, ArticleListQuery, ArticlePreview, Author, Category, NewArticle,
 };
+use crate::services::articles::{Comment, SocialState, UpdateArticle};
 use crate::state::AppState;
 
 const YOUTUBE_EMBED_HOSTS: &[&str] = &[
@@ -35,6 +37,21 @@ pub struct PaginatedResponse<T: Serialize> {
 pub struct ErrorResponse {
     pub error: &'static str,
     pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommentPayload {
+    pub body: String,
+    pub parent_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CommentUpdatePayload {
+    pub body: String,
+}
+
+fn can_manage_all_articles(user: &AuthUser) -> bool {
+    matches!(user.role, UserRole::Editor | UserRole::Admin)
 }
 
 async fn list_articles(
@@ -81,6 +98,358 @@ async fn list_articles(
         per_page,
         total,
     }))
+}
+
+async fn update_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+    Json(payload): Json<UpdateArticle>,
+) -> Result<Json<Article>, (StatusCode, Json<ErrorResponse>)> {
+    let mut patch = payload;
+    if let Some(body) = patch.body.as_deref() {
+        patch.body = Some(sanitize_article_body(body));
+    }
+
+    let article = state
+        .articles
+        .update_post(&slug, patch, user.user_id, can_manage_all_articles(&user))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                error = %error,
+                slug = %slug,
+                user_id = %user.user_id,
+                "Failed to update article"
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "article_update_failed",
+                    message: "Unable to update article right now".to_string(),
+                }),
+            )
+        })?;
+
+    article.map(Json).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Article not found or not editable by this user".to_string(),
+            }),
+        )
+    })
+}
+
+async fn delete_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let deleted = state
+        .articles
+        .delete_post(&slug, user.user_id, can_manage_all_articles(&user))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                error = %error,
+                slug = %slug,
+                user_id = %user.user_id,
+                "Failed to delete article"
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "article_delete_failed",
+                    message: "Unable to delete article right now".to_string(),
+                }),
+            )
+        })?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Article not found or not deletable by this user".to_string(),
+            }),
+        ))
+    }
+}
+
+async fn like_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    social_result(
+        state.articles.like_article(&slug, user.user_id).await,
+        "like_failed",
+        "Unable to like article right now",
+    )
+}
+
+async fn unlike_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    social_result(
+        state.articles.unlike_article(&slug, user.user_id).await,
+        "unlike_failed",
+        "Unable to unlike article right now",
+    )
+}
+
+async fn bookmark_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    social_result(
+        state.articles.bookmark_article(&slug, user.user_id).await,
+        "bookmark_failed",
+        "Unable to bookmark article right now",
+    )
+}
+
+async fn unbookmark_article(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    social_result(
+        state.articles.unbookmark_article(&slug, user.user_id).await,
+        "unbookmark_failed",
+        "Unable to remove bookmark right now",
+    )
+}
+
+fn social_result(
+    result: anyhow::Result<Option<SocialState>>,
+    error: &'static str,
+    message: &'static str,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    result
+        .map_err(|source| {
+            tracing::error!(error = %source, "Article social action failed");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error,
+                    message: message.to_string(),
+                }),
+            )
+        })?
+        .map(Json)
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "not_found",
+                    message: "Article not found".to_string(),
+                }),
+            )
+        })
+}
+
+async fn list_comments(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Vec<Comment>>, (StatusCode, Json<ErrorResponse>)> {
+    let comments = state
+        .articles
+        .list_comments(&slug)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, slug = %slug, "Failed to list comments");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comments_unavailable",
+                    message: "Unable to load comments right now".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "not_found",
+                    message: "Article not found".to_string(),
+                }),
+            )
+        })?;
+
+    Ok(Json(comments))
+}
+
+async fn create_comment(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    user: AuthUser,
+    Json(payload): Json<CommentPayload>,
+) -> Result<(StatusCode, Json<Comment>), (StatusCode, Json<ErrorResponse>)> {
+    let body = payload.body.trim().to_string();
+    if body.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid_comment",
+                message: "Comment body cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    let comment = state
+        .articles
+        .create_comment(&slug, user.user_id, body, payload.parent_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, slug = %slug, user_id = %user.user_id, "Failed to create comment");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comment_create_failed",
+                    message: "Unable to create comment right now".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "not_found",
+                    message: "Article not found".to_string(),
+                }),
+            )
+        })?;
+
+    Ok((StatusCode::CREATED, Json(comment)))
+}
+
+async fn update_comment(
+    State(state): State<AppState>,
+    Path(comment_id): Path<Uuid>,
+    user: AuthUser,
+    Json(payload): Json<CommentUpdatePayload>,
+) -> Result<Json<Comment>, (StatusCode, Json<ErrorResponse>)> {
+    let body = payload.body.trim().to_string();
+    if body.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "invalid_comment",
+                message: "Comment body cannot be empty".to_string(),
+            }),
+        ));
+    }
+
+    let comment = state
+        .articles
+        .update_comment(comment_id, user.user_id, body)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, comment_id = %comment_id, user_id = %user.user_id, "Failed to update comment");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comment_update_failed",
+                    message: "Unable to update comment right now".to_string(),
+                }),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: "not_found",
+                    message: "Comment not found or not editable by this user".to_string(),
+                }),
+            )
+        })?;
+
+    Ok(Json(comment))
+}
+
+async fn delete_comment(
+    State(state): State<AppState>,
+    Path(comment_id): Path<Uuid>,
+    user: AuthUser,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    let deleted = state
+        .articles
+        .delete_comment(comment_id, user.user_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, comment_id = %comment_id, user_id = %user.user_id, "Failed to delete comment");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comment_delete_failed",
+                    message: "Unable to delete comment right now".to_string(),
+                }),
+            )
+        })?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Comment not found or not deletable by this user".to_string(),
+            }),
+        ))
+    }
+}
+
+async fn follow_user(
+    State(state): State<AppState>,
+    Path(following_id): Path<Uuid>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .articles
+        .follow_user(user.user_id, following_id)
+        .await
+        .map(Json)
+        .map_err(|error| {
+            tracing::error!(error = %error, following_id = %following_id, user_id = %user.user_id, "Failed to follow user");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "follow_failed",
+                    message: "Unable to follow user right now".to_string(),
+                }),
+            )
+        })
+}
+
+async fn unfollow_user(
+    State(state): State<AppState>,
+    Path(following_id): Path<Uuid>,
+    user: AuthUser,
+) -> Result<Json<SocialState>, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .articles
+        .unfollow_user(user.user_id, following_id)
+        .await
+        .map(Json)
+        .map_err(|error| {
+            tracing::error!(error = %error, following_id = %following_id, user_id = %user.user_id, "Failed to unfollow user");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "unfollow_failed",
+                    message: "Unable to unfollow user right now".to_string(),
+                }),
+            )
+        })
 }
 
 async fn get_article(
@@ -201,8 +570,7 @@ async fn create_article(
 fn sanitize_article_body(raw_html: &str) -> String {
     let mut cleaner = ammonia::Builder::default();
     cleaner.add_tags([
-        "iframe", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup",
-        "col",
+        "iframe", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "colgroup", "col",
     ]);
     cleaner.add_tag_attributes(
         "iframe",
@@ -325,5 +693,30 @@ fn category_color_hex(category_name: &str) -> &str {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/articles", get(list_articles).post(create_article))
-        .route("/articles/{slug}", get(get_article))
+        .route(
+            "/articles/{slug}",
+            get(get_article)
+                .patch(update_article)
+                .delete(delete_article),
+        )
+        .route(
+            "/articles/{slug}/likes",
+            post(like_article).delete(unlike_article),
+        )
+        .route(
+            "/articles/{slug}/bookmarks",
+            post(bookmark_article).delete(unbookmark_article),
+        )
+        .route(
+            "/articles/{slug}/comments",
+            get(list_comments).post(create_comment),
+        )
+        .route(
+            "/comments/{comment_id}",
+            axum::routing::put(update_comment).delete(delete_comment),
+        )
+        .route(
+            "/users/{following_id}/follow",
+            post(follow_user).delete(unfollow_user),
+        )
 }

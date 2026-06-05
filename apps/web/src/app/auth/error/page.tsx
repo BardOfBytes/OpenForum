@@ -57,12 +57,12 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
   const isDomainError = reason === "domain";
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#f6f5f0] px-4">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="max-w-md w-full text-center">
         {/* Error icon */}
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-[#d4613c]/10">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-accent-subtle">
           <svg
-            className="h-8 w-8 text-[#d4613c]"
+            className="h-8 w-8 text-accent"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -87,20 +87,20 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
         </div>
 
         {/* Error message */}
-        <h1 className="text-2xl font-semibold text-[#1a1917] mb-3 font-[family-name:var(--font-heading)]">
+        <h1 className="mb-3 font-heading text-2xl font-semibold text-text">
           {error.title}
         </h1>
-        <p className="text-[#6b6960] leading-relaxed mb-8">
+        <p className="mb-8 leading-relaxed text-text-secondary">
           {error.description}
         </p>
 
         {/* Domain-specific help */}
         {isDomainError && (
-          <div className="mb-6 rounded-lg bg-[#e8e6e0] p-4 text-left text-sm text-[#1a1917]">
+          <div className="mb-6 rounded-lg bg-surface p-4 text-left text-sm text-text">
             <p className="font-medium mb-1">Accepted email format:</p>
             <div className="space-y-1">
               {ALLOWED_EMAIL_DOMAINS.map((domain) => (
-                <code key={domain} className="block text-[#d4613c]">
+                <code key={domain} className="block text-accent">
                   yourname{domain}
                 </code>
               ))}
@@ -112,13 +112,13 @@ export default async function AuthErrorPage({ searchParams }: AuthErrorPageProps
         <div className="flex flex-col gap-3">
           <Link
             href={ROUTES.login}
-            className="inline-flex items-center justify-center rounded-lg bg-[#1a1917] px-6 py-3 text-sm font-medium text-[#f6f5f0] transition-colors hover:bg-[#2a2927]"
+            className="inline-flex items-center justify-center rounded-lg bg-text px-6 py-3 text-sm font-medium text-text-inverse transition-colors hover:opacity-90"
           >
             Try Again
           </Link>
           <Link
             href={ROUTES.home}
-            className="inline-flex items-center justify-center rounded-lg border border-[#d1cfc8] bg-transparent px-6 py-3 text-sm font-medium text-[#1a1917] transition-colors hover:bg-[#e8e6e0]"
+            className="inline-flex items-center justify-center rounded-lg border border-border bg-transparent px-6 py-3 text-sm font-medium text-text transition-colors hover:bg-surface"
           >
             Back to Home
           </Link>

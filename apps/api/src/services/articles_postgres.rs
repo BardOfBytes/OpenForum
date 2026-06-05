@@ -9,6 +9,8 @@ use crate::models::article::{
     Article, ArticlePreview, Author, Category, NewArticle, youtube_thumbnail_from_html,
 };
 
+use super::articles::{Comment, SocialState, UpdateArticle};
+
 #[derive(Debug, Clone)]
 pub struct PostgresArticlesService {
     pool: PgPool,
@@ -31,6 +33,8 @@ struct ArticlePreviewRow {
     cover_image_url: Option<String>,
     category_name: String,
     author_id: Uuid,
+    author_name: String,
+    author_avatar_url: Option<String>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -49,6 +53,21 @@ struct ArticleRow {
     updated_at: DateTime<Utc>,
     views: i32,
     cover_image_url: Option<String>,
+    author_name: String,
+    author_avatar_url: Option<String>,
+}
+
+#[derive(sqlx::FromRow)]
+struct CommentRow {
+    id: Uuid,
+    article_id: Uuid,
+    author_id: Uuid,
+    author_name: String,
+    author_avatar_url: Option<String>,
+    body: String,
+    parent_id: Option<Uuid>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
 }
 
 impl PostgresArticlesService {
@@ -71,24 +90,32 @@ impl PostgresArticlesService {
         let rows: Vec<ArticlePreviewRow> = sqlx::query_as(
             r#"
             SELECT
-              id,
-              slug,
-              title,
-              excerpt,
-                            body,
-              content_gdoc_id,
-              tags,
-              status,
-              created_at,
-              updated_at,
-              views,
-              cover_image_url,
-              category_name,
-              author_id
-            FROM articles
-            WHERE (lower(status) = 'published' OR lower(status) = 'draft')
-              AND ($1::text IS NULL OR category_slug = $1)
-            ORDER BY created_at DESC
+              a.id,
+              a.slug,
+              a.title,
+              a.excerpt,
+              a.body,
+              a.content_gdoc_id,
+              a.tags,
+              a.status,
+              a.created_at,
+              a.updated_at,
+              a.views,
+              a.cover_image_url,
+              a.category_name,
+              a.author_id,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as author_name,
+              p.avatar_url as author_avatar_url
+            FROM articles a
+            LEFT JOIN profiles p ON p.id = a.author_id
+            WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
+              AND ($1::text IS NULL OR a.category_slug = $1)
+            ORDER BY a.created_at DESC
             LIMIT $2
             OFFSET $3
             "#,
@@ -128,8 +155,8 @@ impl PostgresArticlesService {
                     },
                     author: Author {
                         id: row.author_id,
-                        name: "Unknown Author".to_string(),
-                        avatar_url: None,
+                        name: row.author_name,
+                        avatar_url: row.author_avatar_url,
                     },
                     read_time_minutes,
                 }
@@ -189,22 +216,30 @@ impl PostgresArticlesService {
         let row: Option<ArticleRow> = sqlx::query_as(
             r#"
             SELECT
-              id,
-              slug,
-              title,
-              excerpt,
-              body,
-              content_gdoc_id,
-              author_id,
-              category_name,
-              tags,
-              status,
-              created_at,
-              updated_at,
-              views,
-              cover_image_url
-            FROM articles
-            WHERE slug = $1
+              a.id,
+              a.slug,
+              a.title,
+              a.excerpt,
+              a.body,
+              a.content_gdoc_id,
+              a.author_id,
+              a.category_name,
+              a.tags,
+              a.status,
+              a.created_at,
+              a.updated_at,
+              a.views,
+              a.cover_image_url,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as author_name,
+              p.avatar_url as author_avatar_url
+            FROM articles a
+            LEFT JOIN profiles p ON p.id = a.author_id
+            WHERE a.slug = $1
             LIMIT 1
             "#,
         )
@@ -253,8 +288,8 @@ impl PostgresArticlesService {
             }),
             author_detail: Some(Author {
                 id: row.author_id,
-                name: "Unknown Author".to_string(),
-                avatar_url: None,
+                name: row.author_name,
+                avatar_url: row.author_avatar_url,
             }),
             read_time_minutes: resolved_read_time_minutes,
         };
@@ -366,6 +401,107 @@ impl PostgresArticlesService {
         Ok(article)
     }
 
+    pub async fn update_post(
+        &self,
+        slug: &str,
+        patch: UpdateArticle,
+        actor_id: Uuid,
+        can_manage_all: bool,
+    ) -> Result<Option<Article>> {
+        let current = match self.get_post_by_slug(slug).await? {
+            Some(article) => article,
+            None => return Ok(None),
+        };
+
+        if !can_manage_all && current.author_id != actor_id {
+            return Ok(None);
+        }
+
+        let title = patch.title.unwrap_or_else(|| current.title.clone());
+        let body = patch.body.unwrap_or_else(|| current.body.clone());
+        let excerpt = patch.excerpt.unwrap_or_else(|| current.excerpt.clone());
+        let content_gdoc_id = patch.content_gdoc_id.unwrap_or(current.content_gdoc_id);
+        let cover_image_url = patch.cover_image_url.unwrap_or(current.cover_image_url);
+        let category_name = patch
+            .category_name
+            .unwrap_or_else(|| current.category.clone());
+        let category_slug = slug::slugify(&category_name);
+        let tags = patch.tags.unwrap_or(current.tags);
+        let status = patch.status.unwrap_or(current.status);
+
+        sqlx::query(
+            r#"
+            UPDATE articles
+            SET title = $1,
+                excerpt = $2,
+                body = $3,
+                content_gdoc_id = $4,
+                category_name = $5,
+                category_slug = $6,
+                tags = $7,
+                status = $8,
+                cover_image_url = $9,
+                updated_at = now()
+            WHERE slug = $10
+              AND ($11::boolean OR author_id = $12)
+            "#,
+        )
+        .bind(title)
+        .bind(excerpt)
+        .bind(body)
+        .bind(content_gdoc_id)
+        .bind(category_name)
+        .bind(category_slug)
+        .bind(tags)
+        .bind(status)
+        .bind(cover_image_url)
+        .bind(slug)
+        .bind(can_manage_all)
+        .bind(actor_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to update article in Postgres")?;
+
+        let _ = self
+            .cache
+            .invalidate(&crate::services::cache::keys::article_by_slug(slug))
+            .await;
+        let _ = self.cache.invalidate_articles().await;
+
+        self.get_post_by_slug(slug).await
+    }
+
+    pub async fn delete_post(
+        &self,
+        slug: &str,
+        actor_id: Uuid,
+        can_manage_all: bool,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM articles
+            WHERE slug = $1
+              AND ($2::boolean OR author_id = $3)
+            "#,
+        )
+        .bind(slug)
+        .bind(can_manage_all)
+        .bind(actor_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to delete article from Postgres")?;
+
+        let deleted = result.rows_affected() > 0;
+        if deleted {
+            let _ = self
+                .cache
+                .invalidate(&crate::services::cache::keys::article_by_slug(slug))
+                .await;
+            let _ = self.cache.invalidate_articles().await;
+        }
+        Ok(deleted)
+    }
+
     pub async fn update_post_views(&self, slug: &str) -> Result<()> {
         let result = sqlx::query(
             r#"
@@ -390,6 +526,319 @@ impl PostgresArticlesService {
             .await;
         let _ = self.cache.invalidate_articles().await;
         Ok(())
+    }
+
+    pub async fn like_article(&self, slug: &str, user_id: Uuid) -> Result<Option<SocialState>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        sqlx::query(
+            r#"
+            INSERT INTO likes (user_id, article_id)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id, article_id) DO NOTHING
+            "#,
+        )
+        .bind(user_id)
+        .bind(article_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to like article in Postgres")?;
+
+        Ok(Some(SocialState {
+            active: true,
+            count: self.count_article_rows("likes", article_id).await?,
+        }))
+    }
+
+    pub async fn unlike_article(&self, slug: &str, user_id: Uuid) -> Result<Option<SocialState>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        sqlx::query("DELETE FROM likes WHERE user_id = $1 AND article_id = $2")
+            .bind(user_id)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to unlike article in Postgres")?;
+
+        Ok(Some(SocialState {
+            active: false,
+            count: self.count_article_rows("likes", article_id).await?,
+        }))
+    }
+
+    pub async fn bookmark_article(&self, slug: &str, user_id: Uuid) -> Result<Option<SocialState>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        sqlx::query(
+            r#"
+            INSERT INTO bookmarks (user_id, article_id)
+            VALUES ($1, $2)
+            ON CONFLICT (user_id, article_id) DO NOTHING
+            "#,
+        )
+        .bind(user_id)
+        .bind(article_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to bookmark article in Postgres")?;
+
+        Ok(Some(SocialState {
+            active: true,
+            count: self.count_article_rows("bookmarks", article_id).await?,
+        }))
+    }
+
+    pub async fn unbookmark_article(
+        &self,
+        slug: &str,
+        user_id: Uuid,
+    ) -> Result<Option<SocialState>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        sqlx::query("DELETE FROM bookmarks WHERE user_id = $1 AND article_id = $2")
+            .bind(user_id)
+            .bind(article_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to remove article bookmark in Postgres")?;
+
+        Ok(Some(SocialState {
+            active: false,
+            count: self.count_article_rows("bookmarks", article_id).await?,
+        }))
+    }
+
+    pub async fn list_comments(&self, slug: &str) -> Result<Option<Vec<Comment>>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        let rows: Vec<CommentRow> = sqlx::query_as(
+            r#"
+            SELECT
+              c.id,
+              c.article_id,
+              c.author_id,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as author_name,
+              p.avatar_url as author_avatar_url,
+              c.body,
+              c.parent_id,
+              c.created_at,
+              c.updated_at
+            FROM comments c
+            LEFT JOIN profiles p ON p.id = c.author_id
+            WHERE c.article_id = $1
+            ORDER BY c.created_at ASC
+            "#,
+        )
+        .bind(article_id)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list comments from Postgres")?;
+
+        Ok(Some(rows.into_iter().map(comment_from_row).collect()))
+    }
+
+    pub async fn create_comment(
+        &self,
+        slug: &str,
+        author_id: Uuid,
+        body: String,
+        parent_id: Option<Uuid>,
+    ) -> Result<Option<Comment>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        let row: CommentRow = sqlx::query_as(
+            r#"
+            WITH inserted AS (
+              INSERT INTO comments (article_id, author_id, body, parent_id)
+              VALUES ($1, $2, $3, $4)
+              RETURNING id, article_id, author_id, body, parent_id, created_at, updated_at
+            )
+            SELECT
+              inserted.id,
+              inserted.article_id,
+              inserted.author_id,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as author_name,
+              p.avatar_url as author_avatar_url,
+              inserted.body,
+              inserted.parent_id,
+              inserted.created_at,
+              inserted.updated_at
+            FROM inserted
+            LEFT JOIN profiles p ON p.id = inserted.author_id
+            "#,
+        )
+        .bind(article_id)
+        .bind(author_id)
+        .bind(body)
+        .bind(parent_id)
+        .fetch_one(&self.pool)
+        .await
+        .context("Failed to create comment in Postgres")?;
+
+        Ok(Some(comment_from_row(row)))
+    }
+
+    pub async fn update_comment(
+        &self,
+        comment_id: Uuid,
+        author_id: Uuid,
+        body: String,
+    ) -> Result<Option<Comment>> {
+        let row: Option<CommentRow> = sqlx::query_as(
+            r#"
+            WITH updated AS (
+              UPDATE comments
+              SET body = $1,
+                  updated_at = now()
+              WHERE id = $2 AND author_id = $3
+              RETURNING id, article_id, author_id, body, parent_id, created_at, updated_at
+            )
+            SELECT
+              updated.id,
+              updated.article_id,
+              updated.author_id,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as author_name,
+              p.avatar_url as author_avatar_url,
+              updated.body,
+              updated.parent_id,
+              updated.created_at,
+              updated.updated_at
+            FROM updated
+            LEFT JOIN profiles p ON p.id = updated.author_id
+            "#,
+        )
+        .bind(body)
+        .bind(comment_id)
+        .bind(author_id)
+        .fetch_optional(&self.pool)
+        .await
+        .context("Failed to update comment in Postgres")?;
+
+        Ok(row.map(comment_from_row))
+    }
+
+    pub async fn delete_comment(&self, comment_id: Uuid, author_id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM comments WHERE id = $1 AND author_id = $2")
+            .bind(comment_id)
+            .bind(author_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to delete comment from Postgres")?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn follow_user(&self, follower_id: Uuid, following_id: Uuid) -> Result<SocialState> {
+        if follower_id != following_id {
+            sqlx::query(
+                r#"
+                INSERT INTO follows (follower_id, following_id)
+                VALUES ($1, $2)
+                ON CONFLICT (follower_id, following_id) DO NOTHING
+                "#,
+            )
+            .bind(follower_id)
+            .bind(following_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to follow user in Postgres")?;
+        }
+
+        Ok(SocialState {
+            active: follower_id != following_id,
+            count: self.count_followers(following_id).await?,
+        })
+    }
+
+    pub async fn unfollow_user(
+        &self,
+        follower_id: Uuid,
+        following_id: Uuid,
+    ) -> Result<SocialState> {
+        sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2")
+            .bind(follower_id)
+            .bind(following_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to unfollow user in Postgres")?;
+
+        Ok(SocialState {
+            active: false,
+            count: self.count_followers(following_id).await?,
+        })
+    }
+
+    async fn article_id_by_slug(&self, slug: &str) -> Result<Option<Uuid>> {
+        sqlx::query_scalar("SELECT id FROM articles WHERE slug = $1 LIMIT 1")
+            .bind(slug)
+            .fetch_optional(&self.pool)
+            .await
+            .context("Failed to resolve article id from slug")
+    }
+
+    async fn count_article_rows(&self, table: &str, article_id: Uuid) -> Result<u32> {
+        let query = match table {
+            "likes" => "SELECT COUNT(*) FROM likes WHERE article_id = $1",
+            "bookmarks" => "SELECT COUNT(*) FROM bookmarks WHERE article_id = $1",
+            _ => bail!("Unsupported social count table '{table}'"),
+        };
+
+        let count: i64 = sqlx::query_scalar(query)
+            .bind(article_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to count article social rows")?;
+        Ok(count.max(0) as u32)
+    }
+
+    async fn count_followers(&self, following_id: Uuid) -> Result<u32> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM follows WHERE following_id = $1")
+            .bind(following_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to count followers")?;
+        Ok(count.max(0) as u32)
+    }
+}
+
+fn comment_from_row(row: CommentRow) -> Comment {
+    Comment {
+        id: row.id,
+        article_id: row.article_id,
+        author_id: row.author_id,
+        author_name: row.author_name,
+        author_avatar_url: row.author_avatar_url,
+        body: row.body,
+        parent_id: row.parent_id,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
     }
 }
 

@@ -15,6 +15,10 @@ const ALLOWED_MIME_TYPES: &[&str] = &["image/jpeg", "image/png", "image/webp"];
 // - q_auto:good: Cloudinary chooses a reasonable quality setting
 const INCOMING_TRANSFORMATION: &str = "c_limit,w_1600,h_1600,q_auto:good";
 
+// Applied at delivery time so browsers receive the best supported format and
+// Cloudinary chooses the right quality for the requested asset.
+const DELIVERY_TRANSFORMATION: &str = "f_auto/q_auto";
+
 /// Cloudinary upload service.
 #[derive(Debug, Clone)]
 pub struct CloudinaryService {
@@ -36,7 +40,6 @@ pub struct UploadResult {
 #[derive(Deserialize)]
 struct CloudinaryUploadResponse {
     public_id: String,
-    secure_url: String,
 }
 
 impl CloudinaryService {
@@ -104,10 +107,7 @@ impl CloudinaryService {
             let file_id = format!("test-{}", uuid::Uuid::new_v4());
             return Ok(UploadResult {
                 file_id: file_id.clone(),
-                public_url: format!(
-                    "https://res.cloudinary.com/{}/image/upload/{file_id}",
-                    self.cloud_name
-                ),
+                public_url: self.optimized_delivery_url(&file_id),
             });
         }
 
@@ -159,9 +159,16 @@ impl CloudinaryService {
             .context("Failed to parse Cloudinary upload response")?;
 
         Ok(UploadResult {
+            public_url: self.optimized_delivery_url(&uploaded.public_id),
             file_id: uploaded.public_id,
-            public_url: uploaded.secure_url,
         })
+    }
+
+    fn optimized_delivery_url(&self, public_id: &str) -> String {
+        format!(
+            "https://res.cloudinary.com/{}/image/upload/{DELIVERY_TRANSFORMATION}/{public_id}",
+            self.cloud_name
+        )
     }
 
     fn signature(&self, timestamp: i64) -> String {

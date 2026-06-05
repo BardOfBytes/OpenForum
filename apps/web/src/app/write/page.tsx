@@ -38,7 +38,7 @@ export default async function WritePage() {
   const sessionToken = session.access_token;
 
   return (
-    <div className="min-h-screen bg-[#fcfbf9]">
+    <div className="min-h-screen bg-bg">
       <WriteForm sessionToken={sessionToken} />
     </div>
   );

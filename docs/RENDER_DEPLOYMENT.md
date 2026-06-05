@@ -34,9 +34,11 @@ Key | Value source | Example
 `NEXT_PUBLIC_FRONTEND_URL` | Vercel URL (or temp) | `http://localhost:3000` initially
 `NEXT_PUBLIC_SUPABASE_URL` | Supabase Settings -> API Keys | `https://<project>.supabase.co`
 `AXUM_JWT_SECRET` | Supabase Settings -> JWT Keys -> Legacy JWT Secret | `<copied secret>`
-`GOOGLE_SHEETS_ID` | Google Sheet URL | `<sheet-id>`
-`GOOGLE_SERVICE_ACCOUNT_JSON` | `jq -c` output from service account JSON | `{...}` one line
-`GOOGLE_DRIVE_FOLDER_ID` | Google Drive folder URL | `<folder-id>`
+`DATABASE_URL` | Supabase/Neon Postgres connection string | `postgres://...`
+`CLOUDINARY_CLOUD_NAME` | Cloudinary API keys page | `<cloud-name>`
+`CLOUDINARY_API_KEY` | Cloudinary API keys page | `<api-key>`
+`CLOUDINARY_API_SECRET` | Cloudinary API keys page | `<api-secret>`
+`CLOUDINARY_UPLOAD_FOLDER` | Manual | `openforum/articles`
 `UPSTASH_REDIS_URL` | Upstash console | `redis://default:...@...:6379`
 `UPSTASH_REDIS_TOKEN` | Upstash console | `<token>`
 
@@ -87,6 +89,6 @@ Then redeploy backend once.
 ## Common mistakes
 
 - Wrong Root Directory (must be `apps/api`)
-- Pasting multi-line JSON (must be one-line `jq -c` output)
-- Not sharing Sheet/Drive folder with service account email
+- Missing `DATABASE_URL`
+- Missing Cloudinary credentials
 - Using publishable key instead of JWT secret for `AXUM_JWT_SECRET`

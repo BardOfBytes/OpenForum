@@ -25,13 +25,13 @@ anyhow = "1"
 # Auth — JWT RS256 validation
 jsonwebtoken = "9"
 
-# HTTP client (Google Sheets/Drive API + Cloudinary uploads)
+# HTTP client (Cloudinary uploads + Supabase profile API)
 reqwest = { version = "0.12", features = ["json", "multipart"] }
 
 # Redis (Upstash — caching & rate limiting)
 redis = { version = "0.27", features = ["tokio-comp", "aio", "tokio-rustls-comp"] }
 
-# Postgres (Neon) — articles storage
+# Postgres/Supabase — articles storage
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros", "migrate"] }
 
 # Input sanitization

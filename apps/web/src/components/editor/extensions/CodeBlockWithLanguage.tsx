@@ -32,7 +32,7 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
             const language = event.target.value;
             updateAttributes({ language: language || null });
           }}
-          className="rounded-md border border-[#3f3e3a] bg-[#292825] px-2 py-1 text-xs font-medium text-[#f6f5f0] outline-none"
+          className="rounded-md border border-border bg-bg-elevated px-2 py-1 text-xs font-medium text-text outline-none"
         >
           {CODE_LANGUAGE_OPTIONS.map((option) => (
             <option key={option.label} value={option.value}>
@@ -42,7 +42,7 @@ function CodeBlockNodeView({ node, updateAttributes }: NodeViewProps) {
         </select>
       </div>
 
-      <pre className="overflow-x-auto rounded-xl border border-[#3f3e3a] bg-[#1f1f1d] px-4 pb-4 pt-12 font-mono text-sm leading-6 text-[#f8f4e8] shadow-inner">
+      <pre className="overflow-x-auto rounded-xl border border-border bg-[#1f1f1d] px-4 pb-4 pt-12 font-mono text-sm leading-6 text-[#f8f4e8] shadow-inner">
         <code className="block whitespace-pre">
           <NodeViewContent />
         </code>

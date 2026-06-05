@@ -6,6 +6,10 @@ import katex from "katex";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ArticleContent } from "@/components/articles/ArticleContent";
+import { ArticleActions } from "@/components/articles/ArticleActions";
+import { ArticleComments } from "@/components/articles/ArticleComments";
+import { ArticleManagement } from "@/components/articles/ArticleManagement";
+import { ReadingProgress } from "@/components/articles/ReadingProgress";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import {
   ApiHttpError,
@@ -255,6 +259,7 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
 
     return (
       <>
+        <ReadingProgress />
         <Navbar />
         <main className="py-12 md:py-16">
           <article className="container-narrow">
@@ -277,14 +282,19 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
                 {article.excerpt}
               </p>
 
-              <div className="mt-6 text-sm text-text-tertiary font-body">
-                <span>{article.author.name}</span>
-                <span className="mx-2">·</span>
-                <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>
-                <span className="mx-2">·</span>
-                <span>{article.readTimeMinutes} min read</span>
+              <div className="mt-6 flex flex-col gap-4 border-y border-border-light py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-text-tertiary font-body">
+                  <span className="font-medium text-text">{article.author.name}</span>
+                  <span className="mx-2">·</span>
+                  <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>
+                  <span className="mx-2">·</span>
+                  <span>{article.readTimeMinutes} min read</span>
+                </div>
+                <ArticleActions slug={article.slug} title={article.title} />
               </div>
             </div>
+
+            <ArticleManagement article={article} />
 
             <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-surface min-h-[220px] relative">
               {article.coverImageUrl ? (
@@ -326,6 +336,8 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
             )}
 
             <ArticleContent html={renderedBody} />
+
+            <ArticleComments slug={article.slug} />
 
             {article.tags.length > 0 && (
               <div className="mt-12 pt-6 border-t border-border-light">

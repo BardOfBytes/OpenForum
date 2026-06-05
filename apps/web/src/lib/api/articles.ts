@@ -8,7 +8,7 @@ export interface ArticleListItem {
   excerpt: string;
   coverImageUrl: string | null;
   category: { name: string; color: string };
-  author: { name: string; avatarUrl: string | null };
+  author: { id: string | null; name: string; avatarUrl: string | null };
   readTimeMinutes: number;
   publishedAt: string;
 }
@@ -119,6 +119,7 @@ function mapPreview(article: ApiArticlePreview): ArticleListItem {
     coverImageUrl: article.cover_image_url ?? article.preview_image_url,
     category: article.category,
     author: {
+      id: article.author.id,
       name: article.author.name,
       avatarUrl: article.author.avatar_url,
     },
@@ -152,6 +153,7 @@ export function mapDetail(article: ApiArticle): ArticleDetail {
     coverImageUrl: article.cover_image_url,
     category: article.category_detail ?? { name: "General", color: "#d4613c" },
     author: {
+      id: article.author_detail?.id ?? null,
       name: article.author_detail?.name ?? "Unknown Author",
       avatarUrl: article.author_detail?.avatar_url ?? null,
     },

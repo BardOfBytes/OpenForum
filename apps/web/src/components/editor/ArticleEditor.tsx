@@ -234,8 +234,8 @@ export default function ArticleEditor({
   const toolbarButtonClass = (active = false) =>
     `p-2 rounded transition border disabled:opacity-40 disabled:cursor-not-allowed ${
       active
-        ? "bg-[#f5ddd3] border-[#e2bea8] text-[#8f3a21]"
-        : "border-transparent text-gray-600 hover:bg-gray-200 hover:text-black"
+        ? "bg-accent-light border-accent/30 text-accent"
+        : "border-transparent text-text-secondary hover:bg-surface hover:text-text"
     }`;
 
   const uploadImage = useCallback(
@@ -885,19 +885,19 @@ export default function ArticleEditor({
   const bubbleButtonClass = (active = false) =>
     `px-2.5 py-1.5 rounded-md text-sm font-medium border transition ${
       active
-        ? "bg-[#f5ddd3] border-[#e2bea8] text-[#8f3a21]"
-        : "bg-transparent border-transparent text-[#3f3e3a] hover:bg-[#ece9de]"
+        ? "bg-accent-light border-accent/30 text-accent"
+        : "border-transparent bg-transparent text-text-secondary hover:bg-surface hover:text-text"
     }`;
 
   const isInTable = toolbarState.isTable;
 
   return (
     <div
-      className={`w-full border border-gray-200 rounded-lg bg-white overflow-hidden shadow-sm ${styles.editorSurface}`}
+      className={`w-full overflow-hidden rounded-lg border border-border-light bg-bg-elevated shadow-sm ${styles.editorSurface}`}
     >
       <BubbleMenu
         editor={editor}
-        className="flex items-center gap-1 rounded-xl border border-[#d1cfc8] bg-[#fffdf7] p-1.5 shadow-lg"
+        className="flex items-center gap-1 rounded-xl border border-border bg-bg-elevated p-1.5 shadow-lg"
         options={bubbleMenuOptions}
         shouldShow={shouldShowBubbleMenu}
       >
@@ -918,7 +918,7 @@ export default function ArticleEditor({
                 }
               }}
               placeholder="https://example.com"
-              className="w-64 rounded-md border border-[#d1cfc8] bg-white px-2 py-1 text-sm outline-none"
+              className="w-64 rounded-md border border-border bg-bg px-2 py-1 text-sm text-text outline-none"
               autoFocus
             />
             <button
@@ -1002,9 +1002,9 @@ export default function ArticleEditor({
       </BubbleMenu>
 
       {/* Top Fixed Toolbar */}
-      <div className="flex flex-wrap items-center gap-1 p-2 border-b border-gray-100 bg-[#f6f5f0]">
+      <div className="flex flex-wrap items-center gap-1 border-b border-border-light bg-surface p-2">
         <div className="relative">
-          <Heading size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#6b6960]" />
+          <Heading size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
           <select
             value={toolbarState.currentHeadingLevel}
             onChange={(event) => {
@@ -1018,7 +1018,7 @@ export default function ArticleEditor({
               const level = Number(value.slice(1)) as 1 | 2 | 3;
               editor.chain().focus().toggleHeading({ level }).run();
             }}
-            className="h-9 rounded border border-[#d1cfc8] bg-white pl-8 pr-3 text-sm text-[#1a1917] outline-none"
+            className="h-9 rounded border border-border bg-bg pl-8 pr-3 text-sm text-text outline-none"
             title="Heading level"
           >
             <option value="paragraph">Paragraph</option>
@@ -1079,7 +1079,7 @@ export default function ArticleEditor({
           <LinkIcon size={18} />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1089,7 +1089,7 @@ export default function ArticleEditor({
         >
           <ImageIcon size={18} />
         </button>
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
         <button
           type="button"
           onClick={() => insertYoutubeVideo(editor)}
@@ -1099,7 +1099,7 @@ export default function ArticleEditor({
           <PlaySquare size={18} />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1126,7 +1126,7 @@ export default function ArticleEditor({
           <Minus size={18} />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1153,7 +1153,7 @@ export default function ArticleEditor({
           <CheckSquare size={18} />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1207,7 +1207,7 @@ export default function ArticleEditor({
           </>
         )}
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1234,7 +1234,7 @@ export default function ArticleEditor({
           <AlignRight size={18} />
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1253,7 +1253,7 @@ export default function ArticleEditor({
           $$
         </button>
 
-        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <div className="mx-1 h-6 w-px bg-border" />
 
         <button
           type="button"
@@ -1274,7 +1274,7 @@ export default function ArticleEditor({
           <Redo2 size={18} />
         </button>
 
-        <div className="ml-auto text-xs text-gray-500 font-medium px-2">
+        <div className="ml-auto px-2 text-xs font-medium text-text-secondary">
           {saveIndicator}
         </div>
       </div>
@@ -1284,7 +1284,7 @@ export default function ArticleEditor({
         <EditorContent editor={editor} />
       </div>
 
-      <div className="bg-[#f6f5f0] border-t border-gray-100 px-3 py-2 text-xs text-[#6b6960]">
+      <div className="border-t border-border-light bg-surface px-3 py-2 text-xs text-text-secondary">
         Type / for commands. Drag, drop, or paste images directly into the editor.
       </div>
     </div>

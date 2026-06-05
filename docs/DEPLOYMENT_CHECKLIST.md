@@ -21,17 +21,15 @@ Reference: `docs/SUPABASE_SETUP.md`
 
 ---
 
-## Phase 2: Google + Upstash credentials
+## Phase 2: Database, Cloudinary, and Upstash credentials
 
-- [X] Enable Google Sheets API
-- [X] Enable Google Drive API
-- [X] Create service account JSON
-- [X] Share Sheet with service account email
-- [X] Share Drive folder with service account email
-- [X] Copy:
-  - `GOOGLE_SHEETS_ID`
-  - `GOOGLE_DRIVE_FOLDER_ID`
-  - one-line `GOOGLE_SERVICE_ACCOUNT_JSON`
+- [X] Create/verify Supabase public schema tables
+- [X] Copy `DATABASE_URL`
+- [X] Copy Cloudinary values:
+  - `CLOUDINARY_CLOUD_NAME`
+  - `CLOUDINARY_API_KEY`
+  - `CLOUDINARY_API_SECRET`
+  - `CLOUDINARY_UPLOAD_FOLDER`
 - [X] Create Upstash Redis DB
 - [X] Copy:
   - `UPSTASH_REDIS_URL`

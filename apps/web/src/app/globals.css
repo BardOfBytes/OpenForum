@@ -22,6 +22,8 @@
    ───────────────────────────────────────────────────────────── */
 
 :root {
+  color-scheme: light;
+
   /* ── Core Palette ────────────────────────────────────────── */
   --color-bg:            #f6f5f0;    /* warm off-white, like aged paper */
   --color-bg-elevated:   #fffffe;    /* white for cards, elevated surfaces */
@@ -88,7 +90,7 @@
   --weight-bold:         700;
 
   /* ── Letter Spacing ──────────────────────────────────────── */
-  --tracking-tight:      -0.02em;
+  --tracking-tight:      0em;
   --tracking-normal:     0em;
   --tracking-wide:       0.025em;
   --tracking-wider:      0.05em;
@@ -171,6 +173,46 @@
   --z-toast:             50;
 }
 
+.dark {
+  color-scheme: dark;
+
+  /* ── Core Palette ────────────────────────────────────────── */
+  --color-bg:            #171512;
+  --color-bg-elevated:   #201d19;
+  --color-surface:       #25221d;
+  --color-surface-hover: #302c26;
+  --color-border:        #3b352d;
+  --color-border-light:  #2c2822;
+
+  /* ── Text ────────────────────────────────────────────────── */
+  --color-text:          #f4efe5;
+  --color-text-secondary:#c7bcab;
+  --color-text-tertiary: #8f8577;
+  --color-text-inverse:  #1a1917;
+
+  /* ── Accent — Terracotta / Coral ─────────────────────────── */
+  --color-accent:        #e47752;
+  --color-accent-hover:  #f08a66;
+  --color-accent-light:  #583020;
+  --color-accent-subtle: #2f211b;
+
+  /* ── Semantic ────────────────────────────────────────────── */
+  --color-success:       #65b782;
+  --color-warning:       #d9a24b;
+  --color-error:         #e06458;
+
+  /* ── Overlay & Depth ─────────────────────────────────────── */
+  --color-overlay:       rgba(0, 0, 0, 0.62);
+  --color-backdrop:      rgba(23, 21, 18, 0.86);
+
+  --shadow-xs:           0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-sm:           0 1px 3px rgba(0, 0, 0, 0.32),
+                         0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-md:           0 4px 10px rgba(0, 0, 0, 0.32);
+  --shadow-lg:           0 14px 28px rgba(0, 0, 0, 0.36);
+  --shadow-xl:           0 24px 42px rgba(0, 0, 0, 0.4);
+}
+
 
 /* ─────────────────────────────────────────────────────────────
    BASE STYLES
@@ -197,8 +239,14 @@
     line-height: var(--leading-normal);
     color: var(--color-text);
     background-color: var(--color-bg);
+    transition: background-color var(--duration-normal) var(--ease-out),
+      color var(--duration-normal) var(--ease-out);
     /* Subtle paper-like noise texture via SVG data URI */
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+  }
+
+  .dark body {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
   }
 
   /* Selection highlight with accent color */
@@ -548,6 +596,15 @@
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
   }
 
   /* Gradient text utility for accent headlines */

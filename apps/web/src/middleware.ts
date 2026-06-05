@@ -25,17 +25,6 @@ const PROTECTED_ROUTES = [ROUTES.write, "/profile", "/search"];
 const AUTH_ROUTES = [ROUTES.login, ROUTES.signup, "/auth"];
 
 /**
- * Article details should be readable only by authenticated users.
- * Keeps /articles (list) public while protecting /articles/:slug.
- */
-function isProtectedArticleDetailRoute(pathname: string): boolean {
-  const isCanonicalDetail = pathname.startsWith(`${ROUTES.articles}/`);
-  const isLegacyDetail =
-    pathname.startsWith("/article/") && pathname !== ROUTES.articleNewLegacy;
-  return isCanonicalDetail || isLegacyDetail;
-}
-
-/**
  * Determines if a given pathname starts with any of the specified prefixes.
  */
 function matchesRoute(pathname: string, routes: string[]): boolean {
@@ -99,11 +88,7 @@ async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Redirect unauthenticated users away from protected routes
-  if (
-    !user &&
-    (matchesRoute(pathname, PROTECTED_ROUTES) ||
-      isProtectedArticleDetailRoute(pathname))
-  ) {
+  if (!user && matchesRoute(pathname, PROTECTED_ROUTES)) {
     const url = request.nextUrl.clone();
     url.pathname = ROUTES.login;
     url.searchParams.set("redirect", pathname);

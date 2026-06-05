@@ -26,6 +26,8 @@ Cargo.lock
 .env.local
 .env.*.local
 !.env.example
+Render.env
+supabase_creds.txt
 
 # ========================
 # OS & Editor

@@ -99,13 +99,13 @@ function SignupForm() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#f6f5f0] px-4">
+    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
       <div className="max-w-sm w-full">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-semibold text-[#1a1917] tracking-tight mb-2">
+          <h1 className="mb-2 text-3xl font-semibold tracking-normal text-text">
             Create Account
           </h1>
-          <p className="text-[#6b6960] text-sm leading-relaxed">
+          <p className="text-sm leading-relaxed text-text-secondary">
             Register with your institutional email to start publishing on OpenForum.
           </p>
         </div>
@@ -118,7 +118,7 @@ function SignupForm() {
             placeholder="you@csvtu.ac.in"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm text-[#1a1917] placeholder:text-[#9a988f] focus:outline-none focus:ring-2 focus:ring-[#d4613c]/25 focus:border-[#d4613c]"
+            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
           />
 
           <input
@@ -127,7 +127,7 @@ function SignupForm() {
             placeholder="Password (min 8 characters)"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm text-[#1a1917] placeholder:text-[#9a988f] focus:outline-none focus:ring-2 focus:ring-[#d4613c]/25 focus:border-[#d4613c]"
+            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
           />
 
           <input
@@ -136,13 +136,13 @@ function SignupForm() {
             placeholder="Confirm password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
-            className="w-full rounded-lg border border-[#d1cfc8] bg-white px-4 py-3 text-sm text-[#1a1917] placeholder:text-[#9a988f] focus:outline-none focus:ring-2 focus:ring-[#d4613c]/25 focus:border-[#d4613c]"
+            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
           />
 
           <button
             type="submit"
             disabled={submitting}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#1a1917] px-4 py-3 text-sm font-medium text-[#f6f5f0] transition-colors hover:bg-[#2a2927] disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-text px-4 py-3 text-sm font-medium text-text-inverse transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? <Spinner /> : null}
             Create Account
@@ -150,26 +150,26 @@ function SignupForm() {
         </form>
 
         {errorMessage ? (
-          <p className="mt-4 rounded-lg border border-[#d4613c]/30 bg-[#fff3ef] px-4 py-3 text-sm text-[#8b2f1b]">
+          <p className="mt-4 rounded-lg border border-error/30 bg-accent-subtle px-4 py-3 text-sm text-error">
             {errorMessage}
           </p>
         ) : null}
 
         {successMessage ? (
-          <p className="mt-4 rounded-lg border border-[#7f9e78]/40 bg-[#eff8ec] px-4 py-3 text-sm text-[#37552f]">
+          <p className="mt-4 rounded-lg border border-success/40 bg-surface px-4 py-3 text-sm text-success">
             {successMessage}
           </p>
         ) : null}
 
-        <div className="mt-6 rounded-lg bg-[#e8e6e0] p-4 text-center">
-          <p className="text-xs text-[#6b6960] leading-relaxed">
+        <div className="mt-6 rounded-lg bg-surface p-4 text-center">
+          <p className="text-xs leading-relaxed text-text-secondary">
             Only {formatAllowedEmailDomains("and")} addresses are allowed.
           </p>
         </div>
 
-        <p className="mt-6 text-center text-sm text-[#6b6960]">
+        <p className="mt-6 text-center text-sm text-text-secondary">
           Already have an account?{" "}
-          <Link href={loginUrl} className="underline hover:text-[#1a1917]">
+          <Link href={loginUrl} className="underline hover:text-text">
             Sign in
           </Link>
         </p>
@@ -182,7 +182,7 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen flex items-center justify-center bg-[#f6f5f0]">
+        <main className="flex min-h-screen items-center justify-center bg-bg">
           <Spinner />
         </main>
       }
@@ -195,7 +195,7 @@ export default function SignupPage() {
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 animate-spin text-[#6b6960]"
+      className="h-5 w-5 animate-spin text-text-secondary"
       fill="none"
       viewBox="0 0 24 24"
     >

@@ -8,6 +8,7 @@
 
 import type { Metadata } from "next";
 import { DM_Sans, Fraunces } from "next/font/google";
+import { ThemeScript } from "@/components/theme/ThemeScript";
 import "katex/dist/katex.min.css";
 import "./globals.css";
 
@@ -69,7 +70,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${fraunces.variable}`}>
+    <html
+      lang="en"
+      className={`${dmSans.variable} ${fraunces.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="antialiased">{children}</body>
     </html>
   );

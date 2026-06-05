@@ -33,45 +33,26 @@ Secret key (`sb_secret_...`) optional | `SUPABASE_SERVICE_KEY` | Server only (ne
 
 ---
 
-## 2. Google Values (Sheets + Drive)
+## 2. Database And Cloudinary Values
 
-### 2.1 Enable APIs in Google Cloud
+### 2.1 Copy database connection string
 
-1. Go to https://console.cloud.google.com
-2. Create/select project.
-3. Enable:
-   - Google Sheets API
-   - Google Drive API
+Copy your Supabase/Neon Postgres connection string into:
 
-### 2.2 Create service account JSON
+- `DATABASE_URL`
 
-1. Go to **IAM & Admin -> Service Accounts**.
-2. Click **Create Service Account**.
-3. Open the created account.
-4. Tab **Keys -> Add Key -> Create new key -> JSON**.
-5. Download the JSON file.
+Use an SSL-enabled connection string in production.
 
-### 2.3 Share access with service account email
+### 2.2 Copy Cloudinary credentials
 
-1. Open JSON file and copy `client_email`.
-2. Open your Google Sheet -> **Share** -> paste email -> role **Editor**.
-3. Open your Drive folder -> **Share** -> paste email -> role **Editor**.
+Go to https://console.cloudinary.com/app/settings/api-keys and copy:
 
-### 2.4 Copy IDs
-
-Copy from Google | Paste into env var | Where to set
+Copy from Cloudinary | Paste into env var | Where to set
 --- | --- | ---
-Sheet URL ID | `GOOGLE_SHEETS_ID` | Render
-Drive folder URL ID | `GOOGLE_DRIVE_FOLDER_ID` | Render
-JSON content (single line) | `GOOGLE_SERVICE_ACCOUNT_JSON` | Render
-
-Convert JSON to one line:
-
-```bash
-jq -c . /path/to/service-account.json
-```
-
-Paste the output into `GOOGLE_SERVICE_ACCOUNT_JSON`.
+Cloud name | `CLOUDINARY_CLOUD_NAME` | Render
+API key | `CLOUDINARY_API_KEY` | Render
+API secret | `CLOUDINARY_API_SECRET` | Render
+Upload folder | `CLOUDINARY_UPLOAD_FOLDER` | Render
 
 ---
 
@@ -112,9 +93,11 @@ Optional server-side only:
 - `NEXT_PUBLIC_FRONTEND_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `AXUM_JWT_SECRET`
-- `GOOGLE_SHEETS_ID`
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `GOOGLE_DRIVE_FOLDER_ID`
+- `DATABASE_URL`
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+- `CLOUDINARY_UPLOAD_FOLDER`
 - `UPSTASH_REDIS_URL`
 - `UPSTASH_REDIS_TOKEN`
 

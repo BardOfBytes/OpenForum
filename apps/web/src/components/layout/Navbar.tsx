@@ -25,6 +25,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { ROUTES } from "@/lib/routes";
 import type { User } from "@supabase/supabase-js";
 
@@ -344,6 +345,10 @@ export function Navbar({
 
           {/* ── Right Section ─────────────────────────────── */}
           <div className="flex items-center gap-3">
+            <div className="hidden md:block">
+              <ThemeToggle compact />
+            </div>
+
             {/* Auth state */}
             {!userLoading && (
               <>
@@ -513,6 +518,10 @@ export function Navbar({
 
               {/* Mobile auth actions */}
               <div className="mt-auto pt-8 border-t border-border-light">
+                <div className="mb-4">
+                  <ThemeToggle />
+                </div>
+
                 {user ? (
                   <div className="space-y-3">
                     {/* User info */}

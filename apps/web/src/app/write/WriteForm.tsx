@@ -563,7 +563,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Your headline..."
-          className="w-full text-5xl font-fraunces font-bold text-[#1a1917] bg-transparent outline-none resize-none placeholder:text-gray-300"
+          className="w-full resize-none bg-transparent font-heading text-5xl font-bold text-text outline-none placeholder:text-text-tertiary"
           rows={2}
         />
 
@@ -571,7 +571,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="px-4 py-2 bg-[#f6f5f0] border border-[#e8e6e0] text-[#1a1917] font-medium rounded-full outline-none focus:ring-2 focus:ring-[#d4613c]/30"
+            className="rounded-full border border-border bg-bg px-4 py-2 font-medium text-text outline-none focus:ring-2 focus:ring-accent/30"
           >
             {CATEGORIES.map((cat) => (
               <option key={cat} value={cat}>
@@ -580,16 +580,16 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
             ))}
           </select>
 
-          <div className="flex items-center gap-2 border border-[#e8e6e0] bg-white rounded-full px-3 py-1.5 focus-within:ring-2 focus-within:ring-[#d4613c]/30">
+          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
             {tags.map((t) => (
               <span
                 key={t}
-                className="flex items-center gap-1 bg-[#f6f5f0] text-sm text-[#1a1917] px-2 py-0.5 rounded-full"
+                className="flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-sm text-text"
               >
                 {t}
                 <button
                   onClick={() => removeTag(t)}
-                  className="text-gray-400 hover:text-[#d4613c] transition-colors"
+                  className="text-text-tertiary transition-colors hover:text-accent"
                 >
                   <X size={14} />
                 </button>
@@ -602,13 +602,13 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleTagKeyDown}
-                className="bg-transparent text-sm w-48 outline-none border-none placeholder:text-gray-400 text-[#1a1917]"
+                className="w-48 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-tertiary"
               />
             )}
           </div>
         </div>
 
-        <p className="text-xs text-[#6b6960]">
+        <p className="text-xs text-text-secondary">
           {draftSavedAt
             ? `Draft saved ${formatDraftTime(draftSavedAt)}`
             : "Draft has not been autosaved yet"}
@@ -625,7 +625,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           autosaveEnabled={false}
         />
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-lg border border-[#e2ddd4] bg-[#f6f5f0] px-4 py-2 text-xs text-[#6b6960]">
+        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-lg border border-border-light bg-surface px-4 py-2 text-xs text-text-secondary">
           <span>{wordCount} words</span>
           <span>
             {characterCount} / {MAX_CHARACTERS} characters
@@ -640,7 +640,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       </div>
 
       {/* Action Area */}
-      <div className="flex justify-end border-t border-[#e8e6e0] py-6 gap-4">
+      <div className="flex justify-end gap-4 border-t border-border-light py-6">
         <Button variant="ghost" type="button" onClick={() => router.back()}>
           Cancel
         </Button>
@@ -659,23 +659,23 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       </div>
 
       {restoreDraftToast && (
-        <div className="fixed bottom-6 right-6 z-[60] w-[min(92vw,380px)] rounded-xl border border-[#d1cfc8] bg-[#fffdf7] p-4 shadow-lg">
-          <p className="text-sm font-semibold text-[#1a1917]">Restore saved draft?</p>
-          <p className="mt-1 text-xs text-[#6b6960]">
+        <div className="fixed bottom-6 right-6 z-[60] w-[min(92vw,380px)] rounded-xl border border-border bg-bg-elevated p-4 shadow-lg">
+          <p className="text-sm font-semibold text-text">Restore saved draft?</p>
+          <p className="mt-1 text-xs text-text-secondary">
             Last saved at {formatDraftTime(restoreDraftToast.savedAt)}.
           </p>
           <div className="mt-3 flex items-center justify-end gap-2">
             <button
               type="button"
               onClick={discardDraftFromToast}
-              className="rounded-md border border-[#d1cfc8] px-3 py-1.5 text-xs font-medium text-[#6b6960] hover:bg-[#f1eee5]"
+              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-secondary hover:bg-surface"
             >
               Discard
             </button>
             <button
               type="button"
               onClick={restoreDraftFromToast}
-              className="rounded-md border border-[#d4613c] bg-[#d4613c] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#bf5534]"
+              className="rounded-md border border-accent bg-accent px-3 py-1.5 text-xs font-semibold text-text-inverse hover:bg-accent-hover"
             >
               Restore
             </button>

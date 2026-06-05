@@ -2,7 +2,7 @@
 //!
 //! These structs represent articles at different stages:
 //! - `NewArticle`: incoming payload from the frontend editor
-//! - `Article`: full article record (stored in Google Sheets / Postgres)
+//! - `Article`: full article record stored in Postgres/Supabase
 //! - `ArticlePreview`: compact shape for feed cards (excludes body)
 
 use chrono::{DateTime, Utc};
@@ -32,9 +32,9 @@ pub struct Article {
     pub slug: String,
     pub title: String,
     pub excerpt: String,
-    pub content_gdoc_id: Option<String>, // Replaces direct body content in Sheet
+    pub content_gdoc_id: Option<String>,
     pub author_id: Uuid,
-    pub category: String, // Kept as string in Sheet
+    pub category: String,
     pub tags: Vec<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,

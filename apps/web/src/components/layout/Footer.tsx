@@ -11,7 +11,6 @@
  */
 
 import Link from "next/link";
-import Image from "next/image";
 import { ROUTES } from "@/lib/routes";
 
 interface SocialLink {
