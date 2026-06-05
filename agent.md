@@ -19,7 +19,10 @@ This file is the working control document for migrating the production GitHub Op
 
 ## Current Status
 
-Phase 0 and the first frontend migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, and a migrated article browsing/detail experience. Articles should be publicly readable, while writing, editing, deleting, profile changes, and social actions require authenticated CSVTu users. The migration is still in progress: write page polish, profile/social features, API endpoint expansion, provider cleanup, and full deployment verification remain.
+Phase 0 and the first frontend migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, migrated article browsing/detail experience, backend article mutation endpoints, and frontend article/comment action controls. Articles should be publicly readable, while writing, editing, deleting, profile changes, and social actions require authenticated CSVTu users. The migration is still in progress: local CSS/static loading needs debugging, write page polish, profile/social screens, current-user interaction state, and full deployment verification remain.
+
+Current local blocker:
+- The local dev preview at `localhost:3000` showed the raw `/icon.png` logo at full size, which indicates the CSS/static asset pipeline was not loading correctly in the browser. The dev server has been stopped. Fixing this should be the first next task before more visual QA.
 
 ## Completed Work
 
@@ -68,6 +71,15 @@ Phase 0 and the first frontend migration slices are complete. The project now ha
 - Updated `apps/web/src/app/articles/page.tsx` to render the new explorer while keeping server-side article fetching.
 - Updated `apps/web/src/app/articles/[slug]/page.tsx` with reading progress and action controls.
 - Confirmed legacy redirects already exist for older route shapes such as `/feed`, `/article/[slug]`, and `/category/[slug]`.
+
+### Phase 1D: Downloads UI Migration Slice
+
+- Migrated the home hero toward the Downloads editorial hierarchy: latest issue badge, large Fraunces headline, and read/write CTAs.
+- Added `apps/web/src/components/home/HomeFeed.tsx` for interactive category filtering on the home page using real article data instead of mock data.
+- Migrated login/signup into a shared split-screen editorial auth frame at `apps/web/src/components/auth/AuthFrame.tsx`.
+- Polished the write shell with a sticky OpenForum Studio topbar, draft status, reading stats, and stronger metadata layout while preserving the existing advanced Tiptap editor.
+- Added a protected `/profile` route with current-user profile loading/updating through `/api/v1/users/me`.
+- Updated the navbar so authenticated users can open their profile without being signed out unexpectedly.
 
 ### Phase 1C: Public Article Detail Access
 
@@ -130,18 +142,27 @@ Done:
 - Theme/dark-mode foundation.
 - Auth/write/editor token cleanup.
 - Article archive and article detail polish.
+- Home hero/feed migration with real-data category filtering.
+- Split-screen auth page migration for login/signup.
+- First profile page surface backed by the Rust API.
+- Write shell polish while preserving advanced editor features.
 
 Next:
-- Finish the home page with the Downloads-style editorial hierarchy while preserving real article data.
+- Debug local CSS/static asset loading before continuing UI polish:
+  - Verify `globals.css` is imported and compiled.
+  - Verify `/_next/static/css/*` requests are not being blocked or routed through middleware incorrectly.
+  - Clear/rebuild `.next` if the dev cache is stale.
+  - Confirm the navbar logo has explicit intrinsic dimensions so it cannot dominate the page if utility CSS fails.
+- Finish remaining home page details after browser QA, if the Downloads reference still has gaps.
 - Polish About, Guidelines, Privacy, and Terms pages with the new visual system.
-- Upgrade login/signup toward the Downloads split-screen editorial design.
 - Continue write page migration:
   - Cover image drag/drop polish.
-  - Sticky topbar and publish controls.
   - Subtitle/summary handling if the backend contract supports it.
-  - Writing stats/read-time surface.
   - Preserve the current advanced Tiptap features.
-- Add or polish profile pages once API/profile contracts are clear.
+- Continue profile polish:
+  - public author profile pages.
+  - follow state/count display.
+  - richer author article tabs.
 - Run a complete mobile and dark-mode visual pass.
 
 ### Phase 2: Supabase Database And Data
@@ -180,7 +201,10 @@ Done:
 - Added backend integration coverage for article update/delete and social flows.
 
 TODO:
-- Add API response fields for current-user social state where frontend screens need it.
+- Add API response fields or a state endpoint for initial current-user social state:
+  - whether the current user liked the article.
+  - whether the current user bookmarked the article.
+  - whether the current user follows the author.
 - Review profile fetch/update flow and decide whether Supabase REST remains the best path or direct Postgres is cleaner.
 - Add backend tests for explicit auth domain rejection and RLS-compatible data access.
 
@@ -192,12 +216,16 @@ Done:
 - Article listing and article detail still use real server-side data.
 - Article action buttons now call real like/bookmark endpoints.
 - Article comments UI now reads public comments and posts authenticated comments.
+- Article authors/editors/admins now get inline article edit/delete controls on detail pages.
+- Comment authors now get inline comment edit/delete controls.
+- Current-user profile page now reads/updates through the authenticated Rust API.
 
 TODO:
-- Add edit/delete UI for article authors/editors.
-- Add comment edit/delete controls for comment authors.
-- Connect profile pages to real profile/article/follow data.
+- Fix the local CSS/static loading issue before relying on browser screenshots for UI acceptance.
+- Deploy or run the updated Rust API where the web app points, otherwise the new article/comment controls will hit missing endpoints.
+- Add public author profile pages and follow UI backed by real profile/article/follow data.
 - Verify publish/edit/delete flows from `/write` against the selected backend provider.
+- Decide whether article editing should remain inline on detail pages or move into a full `/write?slug=...` / edit route using the richer editor.
 - Improve empty, loading, and error states for all API-backed screens.
 - Ensure unauthenticated, unauthorized, and non-CSVTu-domain users see clear states.
 

@@ -14,8 +14,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
+import Link from "next/link";
+import { ArrowRight, PenSquare } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 
 /** Cubic-bezier easing for smooth editorial transitions. */
@@ -53,33 +53,26 @@ const underlineVariants = {
 };
 
 export function HeroSection() {
-  const router = useRouter();
-  const headlineWords = ["Every", "Student", "Has", "a"];
-
   return (
     <section
-      className="relative min-h-[calc(100vh-4rem)] flex items-center justify-center overflow-hidden"
+      className="relative flex min-h-[calc(100svh-4rem)] items-center justify-center overflow-hidden"
       aria-label="Hero"
     >
-      {/* Background gradient — warm editorial wash */}
       <div
         className="absolute inset-0 -z-10"
         aria-hidden="true"
         style={{
           background:
-            "radial-gradient(ellipse 80% 60% at 50% 40%, rgba(212,97,60,0.06) 0%, transparent 70%)",
+            "radial-gradient(ellipse 80% 55% at 50% 35%, rgba(212,97,60,0.09) 0%, transparent 72%)",
         }}
       />
 
-      {/* Decorative geometric accent — top right */}
       <div
-        className="absolute top-20 right-[10%] w-48 h-48 rounded-full opacity-[0.04] border-2 border-accent -z-10 hidden md:block"
+        className="absolute right-[10%] top-20 -z-10 hidden h-48 w-48 rounded-full border-2 border-accent opacity-[0.04] md:block"
         aria-hidden="true"
       />
-
-      {/* Decorative line — left side */}
       <div
-        className="absolute left-[8%] top-1/4 bottom-1/4 w-px bg-border hidden lg:block"
+        className="absolute bottom-1/4 left-[8%] top-1/4 -z-10 hidden w-px bg-border lg:block"
         aria-hidden="true"
       />
 
@@ -87,79 +80,58 @@ export function HeroSection() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="container-editorial text-center max-w-4xl px-6 py-20 md:py-32"
+        className="container-editorial max-w-5xl px-6 py-16 text-center md:py-24"
       >
-        {/* Headline — word-by-word reveal */}
-        <h1 className="font-heading font-semibold text-text tracking-tight leading-none text-balance mb-6">
-          {headlineWords.map((word, i) => (
-            <motion.span
-              key={i}
-              variants={itemVariants}
-              className="inline-block mr-[0.25em] text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
-            >
-              {word}
-            </motion.span>
-          ))}
-          {/* "Story" with coral underline accent */}
+        <motion.div
+          variants={itemVariants}
+          className="mb-6 inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.28em] text-accent"
+        >
+          <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
+          Latest Issue
+        </motion.div>
+
+        <h1 className="mb-6 font-heading text-5xl font-semibold leading-[1.05] tracking-tight text-text text-balance md:text-7xl lg:text-[6rem]">
+          <motion.span variants={itemVariants} className="inline">
+            Ideas that shape our{" "}
+          </motion.span>
           <motion.span
             variants={itemVariants}
-            className="inline-block relative text-4xl sm:text-5xl md:text-6xl lg:text-7xl"
+            className="relative inline-block font-normal italic text-accent"
           >
-            Story
+            tomorrow.
             <motion.span
               variants={underlineVariants}
-              className="absolute bottom-1 md:bottom-2 left-0 right-0 h-2 md:h-3 bg-accent/20 rounded-full -z-10"
+              className="absolute bottom-1 left-0 right-0 -z-10 h-3 rounded-full bg-accent/15 md:bottom-2"
               aria-hidden="true"
             />
           </motion.span>
         </h1>
 
-        {/* Subtitle */}
         <motion.p
           variants={itemVariants}
-          className="font-body text-text-secondary text-md md:text-lg leading-relaxed max-w-xl mx-auto mb-10"
+          className="mx-auto mb-10 max-w-2xl font-body text-lg leading-relaxed text-text-secondary md:text-xl"
         >
-          Discover campus stories, student opinions, investigative reports, and
-          editorial perspectives — all from the CSVTU community.
+          A student-run editorial publication by the scholars, creators, and thinkers of CSVTU.
         </motion.p>
 
-        {/* CTA Buttons */}
         <motion.div
           variants={itemVariants}
-          className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4"
+          className="flex flex-col items-center justify-center gap-3 sm:flex-row"
         >
-          <Button
-            type="button"
-            variant="primary"
-            size="lg"
-            onClick={() => router.push(ROUTES.articles)}
-            iconRight={
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
-                />
-              </svg>
-            }
+          <Link
+            href={ROUTES.articles}
+            className="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-semibold text-text-inverse shadow-sm transition-colors hover:bg-accent-hover"
           >
-            Start Reading
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            onClick={() => router.push(ROUTES.login)}
+            Read the latest
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+          <Link
+            href={ROUTES.write}
+            className="inline-flex items-center gap-2 rounded-full border border-border bg-bg px-6 py-3 text-sm font-semibold text-text transition-colors hover:bg-surface"
           >
-            Write for Us
-          </Button>
+            <PenSquare className="h-4 w-4" />
+            Start writing
+          </Link>
         </motion.div>
       </motion.div>
     </section>

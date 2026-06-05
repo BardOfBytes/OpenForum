@@ -372,12 +372,11 @@ export function Navbar({
                       Write
                     </Link>
 
-                    {/* User avatar */}
-                    <button
-                      onClick={handleSignOut}
+                    <Link
+                      href={ROUTES.profile}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                      aria-label={`Sign out (${user.email})`}
-                      title={`Signed in as ${user.email}\nClick to sign out`}
+                      aria-label={`View profile (${user.email})`}
+                      title={`Signed in as ${user.email}`}
                     >
                       {user.user_metadata?.avatar_url ? (
                         <Image
@@ -395,9 +394,16 @@ export function Navbar({
                           {(user.email ?? "U")[0].toUpperCase()}
                         </div>
                       )}
-                      {/* Logout icon */}
+                    </Link>
+
+                    <button
+                      onClick={handleSignOut}
+                      className="rounded-lg px-2 py-2 text-text-tertiary transition-colors duration-fast hover:bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      aria-label={`Sign out (${user.email})`}
+                      title="Sign out"
+                    >
                       <svg
-                        className="w-4 h-4 text-text-tertiary"
+                        className="w-4 h-4"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -548,6 +554,14 @@ export function Navbar({
                         </p>
                       </div>
                     </div>
+
+                    <Link
+                      href={ROUTES.profile}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-border px-4 py-3 text-sm font-medium text-text transition-colors hover:bg-surface"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      View Profile
+                    </Link>
 
                     <Link
                       href={ROUTES.write}

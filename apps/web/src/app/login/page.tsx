@@ -8,6 +8,7 @@
 "use client";
 
 import Link from "next/link";
+import { AuthFrame } from "@/components/auth/AuthFrame";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_POST_LOGIN_REDIRECT,
@@ -106,17 +107,23 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
-      <div className="max-w-sm w-full">
-        <div className="text-center mb-8">
-          <h1 className="mb-2 text-3xl font-semibold tracking-normal text-text">
-            OpenForum
-          </h1>
-          <p className="text-sm leading-relaxed text-text-secondary">
-            Sign in with OAuth or your institutional email.
-          </p>
-        </div>
-
+    <AuthFrame
+      eyebrow="Student access"
+      title="Welcome back"
+      description="Sign in with your institutional account to write, discuss, and save stories."
+      footer={
+        <>
+          No account yet?{" "}
+          <Link href={signupUrl} className="font-semibold text-text underline hover:text-accent">
+            Create one
+          </Link>
+          <span className="mx-2 text-text-tertiary">/</span>
+          <Link href={ROUTES.articles} className="font-semibold text-text underline hover:text-accent">
+            Browse as guest
+          </Link>
+        </>
+      }
+    >
         <div className="space-y-3">
           <button
             onClick={() => handleOAuth("google")}
@@ -178,21 +185,7 @@ function LoginForm() {
             {errorMessage}
           </p>
         ) : null}
-
-        <div className="mt-6 rounded-lg bg-surface p-4 text-center">
-          <p className="text-xs leading-relaxed text-text-secondary">
-            Only {formatAllowedEmailDomains("and")} email addresses are accepted.
-          </p>
-        </div>
-
-        <p className="mt-6 text-center text-sm text-text-secondary">
-          No account yet?{" "}
-          <Link href={signupUrl} className="underline hover:text-text">
-            Create one
-          </Link>
-        </p>
-      </div>
-    </main>
+    </AuthFrame>
   );
 }
 

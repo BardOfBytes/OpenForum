@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileText, Loader2, X } from "lucide-react";
 import DOMPurify from "dompurify";
 import ArticleEditor from "@/components/editor/ArticleEditor";
 import { Button } from "@/components/ui/Button";
@@ -556,18 +557,66 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-6">
+    <div className="min-h-screen bg-bg">
+      <header className="sticky top-0 z-40 border-b border-border bg-bg/90 backdrop-blur-xl">
+        <div className="container-editorial flex h-16 items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link
+              href={ROUTES.articles}
+              className="-ml-2 inline-flex h-9 w-9 items-center justify-center rounded-full text-text-secondary transition-colors hover:bg-surface hover:text-text"
+              aria-label="Back to articles"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-accent">
+                OpenForum Studio
+              </p>
+              <p className="truncate text-xs text-text-secondary">
+                {draftSavedAt
+                  ? `Draft saved ${formatDraftTime(draftSavedAt)}`
+                  : "Draft autosaves every 30 seconds"}
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden items-center gap-5 text-xs text-text-secondary md:flex">
+            <span>{wordCount} words</span>
+            <span>{readTimeMinutes || 1} min read</span>
+            <Button
+              onClick={handleSubmit}
+              disabled={isSubmitting || !title.trim() || isEditorContentEmpty(contentHtml)}
+              size="sm"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing
+                </>
+              ) : (
+                "Publish"
+              )}
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-5 py-10 md:px-8 md:py-14">
       {/* Meta Input Area */}
       <div className="mb-8 space-y-6">
+        <div className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-accent">
+          <FileText className="h-3.5 w-3.5" />
+          New article
+        </div>
+
         <textarea
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Your headline..."
-          className="w-full resize-none bg-transparent font-heading text-5xl font-bold text-text outline-none placeholder:text-text-tertiary"
+          className="w-full resize-none bg-transparent font-heading text-4xl font-semibold leading-tight tracking-tight text-text outline-none placeholder:text-text-tertiary md:text-6xl"
           rows={2}
         />
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
@@ -580,7 +629,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
             ))}
           </select>
 
-          <div className="flex items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
+          <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
             {tags.map((t) => (
               <span
                 key={t}
@@ -602,17 +651,11 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
                 value={tagInput}
                 onChange={(e) => setTagInput(e.target.value)}
                 onKeyDown={handleTagKeyDown}
-                className="w-48 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-tertiary"
+                className="w-56 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-tertiary"
               />
             )}
           </div>
         </div>
-
-        <p className="text-xs text-text-secondary">
-          {draftSavedAt
-            ? `Draft saved ${formatDraftTime(draftSavedAt)}`
-            : "Draft has not been autosaved yet"}
-        </p>
       </div>
 
       {/* Tiptap Editor */}
@@ -625,7 +668,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           autosaveEnabled={false}
         />
 
-        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-lg border border-border-light bg-surface px-4 py-2 text-xs text-text-secondary">
+        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-border-light bg-surface px-4 py-2 text-xs text-text-secondary">
           <span>{wordCount} words</span>
           <span>
             {characterCount} / {MAX_CHARACTERS} characters
@@ -640,7 +683,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       </div>
 
       {/* Action Area */}
-      <div className="flex justify-end gap-4 border-t border-border-light py-6">
+      <div className="flex justify-end gap-3 border-t border-border-light py-6">
         <Button variant="ghost" type="button" onClick={() => router.back()}>
           Cancel
         </Button>
@@ -657,6 +700,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           )}
         </Button>
       </div>
+      </main>
 
       {restoreDraftToast && (
         <div className="fixed bottom-6 right-6 z-[60] w-[min(92vw,380px)] rounded-xl border border-border bg-bg-elevated p-4 shadow-lg">

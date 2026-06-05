@@ -8,6 +8,7 @@
 "use client";
 
 import Link from "next/link";
+import { AuthFrame } from "@/components/auth/AuthFrame";
 import { createClient } from "@/lib/supabase/client";
 import {
   DEFAULT_POST_LOGIN_REDIRECT,
@@ -99,17 +100,19 @@ function SignupForm() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg px-4">
-      <div className="max-w-sm w-full">
-        <div className="text-center mb-8">
-          <h1 className="mb-2 text-3xl font-semibold tracking-normal text-text">
-            Create Account
-          </h1>
-          <p className="text-sm leading-relaxed text-text-secondary">
-            Register with your institutional email to start publishing on OpenForum.
-          </p>
-        </div>
-
+    <AuthFrame
+      eyebrow="Join the newsroom"
+      title="Create account"
+      description="Register with your institutional email to start publishing on OpenForum."
+      footer={
+        <>
+          Already have an account?{" "}
+          <Link href={loginUrl} className="font-semibold text-text underline hover:text-accent">
+            Sign in
+          </Link>
+        </>
+      }
+    >
         <form onSubmit={handleSignup} className="space-y-3">
           <input
             type="email"
@@ -160,21 +163,7 @@ function SignupForm() {
             {successMessage}
           </p>
         ) : null}
-
-        <div className="mt-6 rounded-lg bg-surface p-4 text-center">
-          <p className="text-xs leading-relaxed text-text-secondary">
-            Only {formatAllowedEmailDomains("and")} addresses are allowed.
-          </p>
-        </div>
-
-        <p className="mt-6 text-center text-sm text-text-secondary">
-          Already have an account?{" "}
-          <Link href={loginUrl} className="underline hover:text-text">
-            Sign in
-          </Link>
-        </p>
-      </div>
-    </main>
+    </AuthFrame>
   );
 }
 
