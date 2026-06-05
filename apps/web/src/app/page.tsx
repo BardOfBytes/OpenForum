@@ -21,6 +21,7 @@ import { HeroSection } from "@/components/home/HeroSection";
 import { CategoriesBar } from "@/components/home/CategoriesBar";
 import { HomeFeed } from "@/components/home/HomeFeed";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { ROUTES } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -43,7 +44,9 @@ async function getHomepageArticles(): Promise<{
     const articles = await getArticles();
     return { articles: articles.slice(0, 6), errorMessage: null };
   } catch (error) {
-    console.error("[home] Failed to load homepage articles:", error);
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[home] Failed to load homepage articles:", error);
+    }
     return {
       articles: [],
       errorMessage: "Latest stories are temporarily unavailable.",

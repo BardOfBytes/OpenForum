@@ -6,12 +6,19 @@
 //! |--------|----------------|----------|------------------------------|
 //! | GET    | `/users/me`    | Required | Get current user profile     |
 //! | PUT    | `/users/me`    | Required | Update current user profile  |
+//! | GET    | `/users/:id`   | Optional | Get public profile + follow state |
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::get};
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::get,
+};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::middleware::auth::AuthUser;
+use crate::middleware::auth::{AuthUser, OptionalAuthUser};
 use crate::state::AppState;
 
 const PROFILE_SELECT: &str = "id,email,display_name,roll_number,branch,year,avatar_url,bio";
@@ -27,6 +34,19 @@ pub struct UserProfile {
     pub year: Option<u8>,
     pub avatar_url: Option<String>,
     pub bio: Option<String>,
+}
+
+/// Public user profile response.
+#[derive(Debug, Serialize)]
+pub struct PublicUserProfile {
+    pub id: String,
+    pub name: String,
+    pub branch: Option<String>,
+    pub year: Option<u8>,
+    pub avatar_url: Option<String>,
+    pub bio: Option<String>,
+    pub follower_count: u32,
+    pub is_following: bool,
 }
 
 /// Payload for updating a user profile.
@@ -98,6 +118,23 @@ fn map_profile(row: SupabaseProfileRow) -> UserProfile {
         year: row.year,
         avatar_url: row.avatar_url,
         bio: row.bio,
+    }
+}
+
+fn map_public_profile(
+    row: SupabaseProfileRow,
+    follower_count: u32,
+    is_following: bool,
+) -> PublicUserProfile {
+    PublicUserProfile {
+        id: row.id,
+        name: row.display_name,
+        branch: row.branch,
+        year: row.year,
+        avatar_url: row.avatar_url,
+        bio: row.bio,
+        follower_count,
+        is_following,
     }
 }
 
@@ -244,6 +281,40 @@ async fn get_me(_state: State<AppState>, user: AuthUser) -> Result<Json<UserProf
     Ok(Json(profile))
 }
 
+/// `GET /users/:id` — get public profile and viewer-specific follow state.
+async fn get_public_profile(
+    State(state): State<AppState>,
+    Path(user_id): Path<Uuid>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
+) -> Result<Json<PublicUserProfile>, StatusCode> {
+    let (supabase_url, service_key) = supabase_admin_env()?;
+    let client = reqwest::Client::new();
+    let Some(profile) =
+        fetch_profile(&client, &supabase_url, &service_key, &user_id.to_string()).await?
+    else {
+        return Err(StatusCode::NOT_FOUND);
+    };
+
+    let follow_state = state
+        .articles
+        .follow_state(viewer.map(|user| user.user_id), user_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                error = %error,
+                user_id = %user_id,
+                "Failed to resolve public profile follow state"
+            );
+            StatusCode::BAD_GATEWAY
+        })?;
+
+    Ok(Json(map_public_profile(
+        profile,
+        follow_state.count,
+        follow_state.active,
+    )))
+}
+
 /// `PUT /users/me` — update the authenticated user's profile.
 async fn update_me(
     _state: State<AppState>,
@@ -323,5 +394,7 @@ async fn update_me(
 
 /// Mount user routes onto a router.
 pub fn router() -> Router<AppState> {
-    Router::new().route("/users/me", get(get_me).put(update_me))
+    Router::new()
+        .route("/users/me", get(get_me).put(update_me))
+        .route("/users/{id}", get(get_public_profile))
 }

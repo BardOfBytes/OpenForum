@@ -4,6 +4,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ArticlesExplorer } from "@/components/articles/ArticlesExplorer";
 import { getArticles } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { ROUTES } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -36,7 +37,9 @@ export default async function ArticlesPage() {
       </>
     );
   } catch (error) {
-    console.error("[articles] Failed to load articles:", error);
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[articles] Failed to load articles:", error);
+    }
 
     return (
       <>

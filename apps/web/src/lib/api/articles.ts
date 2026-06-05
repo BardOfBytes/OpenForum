@@ -1,5 +1,9 @@
 import { ROUTES } from "@/lib/routes";
-import { apiUrl } from "@/lib/api/base-url";
+import {
+  ApiBuildTimeFetchSkippedError,
+  apiUrl,
+  isProductionBuildPhase,
+} from "@/lib/api/base-url";
 
 export interface ArticleListItem {
   id: string;
@@ -17,6 +21,16 @@ export interface ArticleDetail extends ArticleListItem {
   body: string;
   tags: string[];
   views: number;
+}
+
+export interface SocialState {
+  active: boolean;
+  count: number;
+}
+
+export interface ArticleSocialState {
+  like: SocialState;
+  bookmark: SocialState;
 }
 
 interface ApiCategory {
@@ -90,6 +104,10 @@ export class ApiHttpError extends Error {
 const ARTICLES_FETCH_REVALIDATE_SECONDS = 60;
 
 async function fetchJson<T>(path: string): Promise<T> {
+  if (isProductionBuildPhase()) {
+    throw new ApiBuildTimeFetchSkippedError();
+  }
+
   const response = await fetch(apiUrl(path), {
     next: { revalidate: ARTICLES_FETCH_REVALIDATE_SECONDS },
   });
@@ -186,6 +204,26 @@ export async function getArticles(options: GetArticlesOptions = {}): Promise<Art
 export async function getArticleBySlug(slug: string): Promise<ArticleDetail> {
   const response = await fetchJson<ApiArticle>(`/api/v1/articles/${slug}`);
   return mapDetail(response);
+}
+
+export async function getArticleSocialState(
+  slug: string,
+  accessToken?: string | null
+): Promise<ArticleSocialState> {
+  if (isProductionBuildPhase()) {
+    throw new ApiBuildTimeFetchSkippedError();
+  }
+
+  const response = await fetch(apiUrl(`/api/v1/articles/${slug}/social-state`), {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
+    ...(accessToken ? { cache: "no-store" as const } : { next: { revalidate: 60 } }),
+  });
+
+  if (!response.ok) {
+    throw new ApiHttpError(response.status, `Request failed (${response.status})`);
+  }
+
+  return (await response.json()) as ArticleSocialState;
 }
 
 export const ARTICLE_ROUTES = {

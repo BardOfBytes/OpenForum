@@ -5,6 +5,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { getCategoryBySlug } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
@@ -44,7 +45,9 @@ export default async function CategoryDetailPage({ params }: CategoryPageProps) 
   try {
     articles = await getArticles({ category: slug, perPage: 50 });
   } catch (error) {
-    console.error(`[categories/${slug}] Failed to load category articles:`, error);
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error(`[categories/${slug}] Failed to load category articles:`, error);
+    }
     errorMessage = "Unable to load this category right now.";
   }
 

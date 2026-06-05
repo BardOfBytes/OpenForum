@@ -208,6 +208,11 @@ pub struct AuthUser {
     pub role: UserRole,
 }
 
+/// Optional authenticated user for public routes that can enrich responses
+/// when a valid bearer token is present.
+#[derive(Debug, Clone)]
+pub struct OptionalAuthUser(pub Option<AuthUser>);
+
 // ── JWT Claims ──────────────────────────────────────────────────
 
 /// Supabase JWT claims structure.
@@ -446,6 +451,23 @@ where
             email,
             role,
         })
+    }
+}
+
+impl<S> FromRequestParts<S> for OptionalAuthUser
+where
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        if parts.headers.get("authorization").is_none() {
+            return Ok(OptionalAuthUser(None));
+        }
+
+        AuthUser::from_request_parts(parts, state)
+            .await
+            .map(|user| OptionalAuthUser(Some(user)))
     }
 }
 

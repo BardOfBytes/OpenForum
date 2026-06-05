@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/client";
 interface ArticleActionsProps {
   slug: string;
   title: string;
+  initialLikeState?: SocialState;
+  initialBookmarkState?: SocialState;
 }
 
 type ActionKind = "like" | "bookmark";
@@ -19,14 +21,21 @@ interface SocialState {
   count: number;
 }
 
-export function ArticleActions({ slug, title }: ArticleActionsProps) {
+export function ArticleActions({
+  slug,
+  title,
+  initialLikeState,
+  initialBookmarkState,
+}: ArticleActionsProps) {
   const [copied, setCopied] = useState(false);
   const [authRequired, setAuthRequired] = useState(false);
   const [pending, setPending] = useState<ActionKind | null>(null);
-  const [likeState, setLikeState] = useState<SocialState>({ active: false, count: 0 });
+  const [likeState, setLikeState] = useState<SocialState>(
+    initialLikeState ?? { active: false, count: 0 }
+  );
   const [bookmarkState, setBookmarkState] = useState<SocialState>({
-    active: false,
-    count: 0,
+    active: initialBookmarkState?.active ?? false,
+    count: initialBookmarkState?.count ?? 0,
   });
 
   async function copyLink() {
@@ -141,7 +150,11 @@ export function ArticleActions({ slug, title }: ArticleActionsProps) {
               }
             />
           )}
-          {bookmarkState.active ? "Saved" : "Save"}
+          {bookmarkState.count > 0
+            ? `${bookmarkState.active ? "Saved" : "Save"} · ${bookmarkState.count}`
+            : bookmarkState.active
+              ? "Saved"
+              : "Save"}
         </button>
         <button
           type="button"

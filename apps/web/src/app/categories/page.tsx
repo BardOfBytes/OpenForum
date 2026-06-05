@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { getArticlesPage, type ArticleListItem } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { CATEGORY_CATALOG, categorySlugFromName } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
@@ -55,7 +56,9 @@ async function getCategorySnapshots(): Promise<{
 
     return { snapshots, errorMessage: null };
   } catch (error) {
-    console.error("[categories] Failed to load category snapshots:", error);
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[categories] Failed to load category snapshots:", error);
+    }
     return {
       snapshots: new Map(),
       errorMessage: "Categories are temporarily unavailable.",

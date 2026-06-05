@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
+import { Navbar } from "@/components/layout/Navbar";
+import { EditorialInfoPage } from "@/components/pages/EditorialInfoPage";
 import { ROUTES } from "@/lib/routes";
 
 export const metadata: Metadata = {
@@ -14,69 +14,37 @@ export default function GuidelinesPage() {
   return (
     <>
       <Navbar />
-      <main className="py-12 md:py-16">
-        <section className="container-editorial mb-12 md:mb-16">
-          <span className="text-xs font-medium font-body uppercase tracking-widest text-text-tertiary block mb-2">
-            OpenForum
-          </span>
-          <h1 className="font-heading text-4xl md:text-5xl font-semibold text-text tracking-tight max-w-3xl">
-            Contributor Guidelines
-          </h1>
-          <p className="font-body text-text-secondary mt-6 max-w-2xl leading-relaxed text-base md:text-lg">
-            Publish clear, fair, and well-researched stories. These guidelines ensure every piece on
-            OpenForum helps readers trust what they are reading.
-          </p>
-        </section>
-
-        <section className="container-narrow space-y-8">
-          <article className="rounded-xl border border-border-light bg-bg-elevated p-6">
-            <h2 className="font-heading text-2xl font-semibold text-text mb-3">Accuracy first</h2>
-            <p className="font-body text-text-secondary leading-relaxed">
-              Verify claims before publishing. Distinguish facts from opinion and avoid misleading
-              headlines.
-            </p>
-          </article>
-
-          <article className="rounded-xl border border-border-light bg-bg-elevated p-6">
-            <h2 className="font-heading text-2xl font-semibold text-text mb-3">Respect and fairness</h2>
-            <p className="font-body text-text-secondary leading-relaxed">
-              Critique ideas, not identities. Avoid personal attacks, discriminatory language, and
-              harassment.
-            </p>
-          </article>
-
-          <article className="rounded-xl border border-border-light bg-bg-elevated p-6">
-            <h2 className="font-heading text-2xl font-semibold text-text mb-3">Transparency</h2>
-            <p className="font-body text-text-secondary leading-relaxed">
-              If you have a conflict of interest, disclose it. If you make an error, request a
-              correction promptly.
-            </p>
-          </article>
-        </section>
-
-        <section className="container-editorial mt-12 rounded-2xl border border-border-light bg-surface p-8 md:p-10">
-          <h2 className="font-heading text-2xl md:text-3xl font-semibold text-text tracking-tight mb-3">
-            Ready to publish responsibly?
-          </h2>
-          <p className="font-body text-text-secondary leading-relaxed mb-6 max-w-2xl">
-            Follow these principles and submit your next story with confidence.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href={ROUTES.write}
-              className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
-            >
-              Start writing
-            </Link>
-            <Link
-              href={ROUTES.articles}
-              className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
-            >
-              Read examples
-            </Link>
-          </div>
-        </section>
-      </main>
+      <EditorialInfoPage
+        eyebrow="Contributor guidelines"
+        title="Publish clearly, fairly, and with enough evidence to earn trust."
+        description="These standards keep OpenForum useful for readers while giving contributors room to report, argue, and experiment."
+        primaryAction={{ href: ROUTES.write, label: "Start writing" }}
+        secondaryAction={{ href: ROUTES.articles, label: "Read examples" }}
+        sections={[
+          {
+            title: "Accuracy first",
+            body: "Verify claims before publishing. Separate reporting from opinion, avoid misleading headlines, and link or name sources when readers need context.",
+          },
+          {
+            title: "Respect and fairness",
+            body: "Critique decisions, systems, and ideas directly. Avoid personal attacks, discriminatory framing, harassment, and speculation about private lives.",
+          },
+          {
+            title: "Transparency",
+            body: "Disclose conflicts of interest. If a story changes after publishing, make the correction clear instead of hiding the edit.",
+          },
+          {
+            title: "Readable structure",
+            body: "Use a precise headline, a direct opening, and paragraphs that move one idea at a time. Readers should understand the purpose within the first few lines.",
+          },
+        ]}
+        closing={{
+          title: "Strong writing is welcome. Careless writing is not.",
+          body: "OpenForum can host sharp disagreement when it is honest, sourced, and written with respect for the community reading it.",
+          primaryAction: { href: ROUTES.write, label: "Write responsibly" },
+          secondaryAction: { href: ROUTES.about, label: "About OpenForum" },
+        }}
+      />
       <Footer />
     </>
   );

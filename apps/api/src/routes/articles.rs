@@ -10,11 +10,11 @@ use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::middleware::auth::{AuthUser, UserRole};
+use crate::middleware::auth::{AuthUser, OptionalAuthUser, UserRole};
 use crate::models::article::{
     Article, ArticleListQuery, ArticlePreview, Author, Category, NewArticle,
 };
-use crate::services::articles::{Comment, SocialState, UpdateArticle};
+use crate::services::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
 use crate::state::AppState;
 
 const YOUTUBE_EMBED_HOSTS: &[&str] = &[
@@ -202,6 +202,41 @@ async fn unlike_article(
         "unlike_failed",
         "Unable to unlike article right now",
     )
+}
+
+async fn article_social_state(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
+) -> Result<Json<ArticleSocialState>, (StatusCode, Json<ErrorResponse>)> {
+    let result = state
+        .articles
+        .article_social_state(&slug, viewer.map(|user| user.user_id))
+        .await
+        .map_err(|error| {
+            tracing::error!(
+                error = %error,
+                slug = %slug,
+                "Failed to resolve article social state"
+            );
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "social_state_failed",
+                    message: "Unable to load article social state right now".to_string(),
+                }),
+            )
+        })?;
+
+    result.map(Json).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Article not found".to_string(),
+            }),
+        )
+    })
 }
 
 async fn bookmark_article(
@@ -703,6 +738,7 @@ pub fn router() -> Router<AppState> {
             "/articles/{slug}/likes",
             post(like_article).delete(unlike_article),
         )
+        .route("/articles/{slug}/social-state", get(article_social_state))
         .route(
             "/articles/{slug}/bookmarks",
             post(bookmark_article).delete(unbookmark_article),

@@ -266,6 +266,47 @@ impl ArticlesService {
         }
     }
 
+    pub async fn article_social_state(
+        &self,
+        slug: &str,
+        viewer_id: Option<Uuid>,
+    ) -> Result<Option<ArticleSocialState>> {
+        match self {
+            Self::Postgres(service) => service.article_social_state(slug, viewer_id).await,
+            Self::InMemory(state) => {
+                let state = state.lock().expect("in-memory articles mutex poisoned");
+                let Some(article_id) = state.article_id_by_slug(slug) else {
+                    return Ok(None);
+                };
+                let liked = viewer_id
+                    .is_some_and(|viewer_id| state.likes.contains(&(viewer_id, article_id)));
+                let bookmarked = viewer_id
+                    .is_some_and(|viewer_id| state.bookmarks.contains(&(viewer_id, article_id)));
+
+                Ok(Some(ArticleSocialState {
+                    like: SocialState {
+                        active: liked,
+                        count: state
+                            .likes
+                            .iter()
+                            .filter(|(_, liked_article_id)| *liked_article_id == article_id)
+                            .count() as u32,
+                    },
+                    bookmark: SocialState {
+                        active: bookmarked,
+                        count: state
+                            .bookmarks
+                            .iter()
+                            .filter(|(_, bookmarked_article_id)| {
+                                *bookmarked_article_id == article_id
+                            })
+                            .count() as u32,
+                    },
+                }))
+            }
+        }
+    }
+
     pub async fn unlike_article(&self, slug: &str, user_id: Uuid) -> Result<Option<SocialState>> {
         match self {
             Self::Postgres(service) => service.unlike_article(slug, user_id).await,
@@ -473,6 +514,30 @@ impl ArticlesService {
             }
         }
     }
+
+    pub async fn follow_state(
+        &self,
+        viewer_id: Option<Uuid>,
+        following_id: Uuid,
+    ) -> Result<SocialState> {
+        match self {
+            Self::Postgres(service) => service.follow_state(viewer_id, following_id).await,
+            Self::InMemory(state) => {
+                let state = state.lock().expect("in-memory articles mutex poisoned");
+                let active = viewer_id.is_some_and(|viewer_id| {
+                    viewer_id != following_id && state.follows.contains(&(viewer_id, following_id))
+                });
+                Ok(SocialState {
+                    active,
+                    count: state
+                        .follows
+                        .iter()
+                        .filter(|(_, id)| *id == following_id)
+                        .count() as u32,
+                })
+            }
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -509,6 +574,12 @@ pub struct UpdateArticle {
 pub struct SocialState {
     pub active: bool,
     pub count: u32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArticleSocialState {
+    pub like: SocialState,
+    pub bookmark: SocialState,
 }
 
 #[derive(Debug, Clone, Serialize)]

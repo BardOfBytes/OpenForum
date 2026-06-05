@@ -7,6 +7,17 @@ export class ApiBaseUrlConfigurationError extends Error {
   }
 }
 
+export class ApiBuildTimeFetchSkippedError extends Error {
+  constructor(message = "Remote API fetch skipped during production build.") {
+    super(message);
+    this.name = "ApiBuildTimeFetchSkippedError";
+  }
+}
+
+export function isProductionBuildPhase(): boolean {
+  return process.env.NEXT_PHASE === "phase-production-build";
+}
+
 function normalizeBaseUrl(rawUrl: string): string {
   return rawUrl.trim().replace(/\/+$/, "");
 }

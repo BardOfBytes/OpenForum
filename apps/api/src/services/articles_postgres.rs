@@ -9,7 +9,7 @@ use crate::models::article::{
     Article, ArticlePreview, Author, Category, NewArticle, youtube_thumbnail_from_html,
 };
 
-use super::articles::{Comment, SocialState, UpdateArticle};
+use super::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
 
 #[derive(Debug, Clone)]
 pub struct PostgresArticlesService {
@@ -552,6 +552,53 @@ impl PostgresArticlesService {
         }))
     }
 
+    pub async fn article_social_state(
+        &self,
+        slug: &str,
+        viewer_id: Option<Uuid>,
+    ) -> Result<Option<ArticleSocialState>> {
+        let Some(article_id) = self.article_id_by_slug(slug).await? else {
+            return Ok(None);
+        };
+
+        let liked = if let Some(viewer_id) = viewer_id {
+            sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND article_id = $2)",
+            )
+            .bind(viewer_id)
+            .bind(article_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to resolve article like state")?
+        } else {
+            false
+        };
+
+        let bookmarked = if let Some(viewer_id) = viewer_id {
+            sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM bookmarks WHERE user_id = $1 AND article_id = $2)",
+            )
+            .bind(viewer_id)
+            .bind(article_id)
+            .fetch_one(&self.pool)
+            .await
+            .context("Failed to resolve article bookmark state")?
+        } else {
+            false
+        };
+
+        Ok(Some(ArticleSocialState {
+            like: SocialState {
+                active: liked,
+                count: self.count_article_rows("likes", article_id).await?,
+            },
+            bookmark: SocialState {
+                active: bookmarked,
+                count: self.count_article_rows("bookmarks", article_id).await?,
+            },
+        }))
+    }
+
     pub async fn unlike_article(&self, slug: &str, user_id: Uuid) -> Result<Option<SocialState>> {
         let Some(article_id) = self.article_id_by_slug(slug).await? else {
             return Ok(None);
@@ -791,6 +838,34 @@ impl PostgresArticlesService {
 
         Ok(SocialState {
             active: false,
+            count: self.count_followers(following_id).await?,
+        })
+    }
+
+    pub async fn follow_state(
+        &self,
+        viewer_id: Option<Uuid>,
+        following_id: Uuid,
+    ) -> Result<SocialState> {
+        let active = if let Some(viewer_id) = viewer_id {
+            if viewer_id == following_id {
+                false
+            } else {
+                sqlx::query_scalar::<_, bool>(
+                    "SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2)",
+                )
+                .bind(viewer_id)
+                .bind(following_id)
+                .fetch_one(&self.pool)
+                .await
+                .context("Failed to resolve follow state")?
+            }
+        } else {
+            false
+        };
+
+        Ok(SocialState {
+            active,
             count: self.count_followers(following_id).await?,
         })
     }

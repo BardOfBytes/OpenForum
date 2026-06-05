@@ -11,12 +11,16 @@ import { ArticleComments } from "@/components/articles/ArticleComments";
 import { ArticleManagement } from "@/components/articles/ArticleManagement";
 import { ReadingProgress } from "@/components/articles/ReadingProgress";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
+import { createClient } from "@/lib/supabase/server";
 import {
   ApiHttpError,
+  getArticleSocialState,
   getArticleBySlug,
   getArticles,
+  type ArticleSocialState,
   type ArticleListItem,
 } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { categorySlugFromName, getCategoryBySlug } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
@@ -230,8 +234,13 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
     const renderedBody = renderMathNodes(bodyWithoutVideo);
     const categorySlug = categorySlugFromName(article.category.name);
     const knownCategory = getCategoryBySlug(categorySlug);
+    const supabase = await createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
     let relatedArticles: ArticleListItem[] = [];
+    let articleSocialState: ArticleSocialState | null = null;
     try {
       const sameCategory = await getArticles({ category: categorySlug, perPage: 8 });
       relatedArticles = sameCategory.filter((candidate) => candidate.slug !== slug).slice(0, 3);
@@ -254,7 +263,17 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
         }
       }
     } catch (error) {
-      console.warn(`[articles/${slug}] Failed to load related stories`, error);
+      if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+        console.warn(`[articles/${slug}] Failed to load related stories`, error);
+      }
+    }
+
+    try {
+      articleSocialState = await getArticleSocialState(slug, session?.access_token);
+    } catch (error) {
+      if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+        console.warn(`[articles/${slug}] Failed to load article social state`, error);
+      }
     }
 
     return (
@@ -284,13 +303,27 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
 
               <div className="mt-6 flex flex-col gap-4 border-y border-border-light py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="text-sm text-text-tertiary font-body">
-                  <span className="font-medium text-text">{article.author.name}</span>
+                  {article.author.id ? (
+                    <Link
+                      href={ROUTES.author.detail(article.author.id)}
+                      className="font-medium text-text transition-colors hover:text-accent"
+                    >
+                      {article.author.name}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-text">{article.author.name}</span>
+                  )}
                   <span className="mx-2">·</span>
                   <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>
                   <span className="mx-2">·</span>
                   <span>{article.readTimeMinutes} min read</span>
                 </div>
-                <ArticleActions slug={article.slug} title={article.title} />
+                <ArticleActions
+                  slug={article.slug}
+                  title={article.title}
+                  initialLikeState={articleSocialState?.like}
+                  initialBookmarkState={articleSocialState?.bookmark}
+                />
               </div>
             </div>
 

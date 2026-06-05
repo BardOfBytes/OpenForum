@@ -19,10 +19,11 @@ This file is the working control document for migrating the production GitHub Op
 
 ## Current Status
 
-Phase 0 and the first frontend migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, migrated article browsing/detail experience, backend article mutation endpoints, and frontend article/comment action controls. Articles should be publicly readable, while writing, editing, deleting, profile changes, and social actions require authenticated CSVTu users. The migration is still in progress: local CSS/static loading needs debugging, write page polish, profile/social screens, current-user interaction state, and full deployment verification remain.
+Phase 0 and the main frontend/backend migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, migrated article browsing/detail experience, backend article mutation endpoints, public profile/follow-state endpoints, article social-state endpoints, and frontend article/comment/action controls. Articles and public author profiles should be publicly readable, while writing, editing, deleting, commenting, liking, bookmarking, following, profile changes, and moderation require authenticated CSVTu users. The migration is still in progress: write cover-image/edit-flow polish, final browser QA, deployment env confirmation, and production smoke testing remain.
 
-Current local blocker:
-- The local dev preview at `localhost:3000` showed the raw `/icon.png` logo at full size, which indicates the CSS/static asset pipeline was not loading correctly in the browser. The dev server has been stopped. Fixing this should be the first next task before more visual QA.
+Resolved local blockers:
+- The earlier local CSS/static preview issue was reported as fixed by the user.
+- Production web builds now skip remote API fetches during `next build`, so unavailable DNS for `openforum-api.onrender.com` no longer pollutes or risks the build.
 
 ## Completed Work
 
@@ -72,15 +73,6 @@ Current local blocker:
 - Updated `apps/web/src/app/articles/[slug]/page.tsx` with reading progress and action controls.
 - Confirmed legacy redirects already exist for older route shapes such as `/feed`, `/article/[slug]`, and `/category/[slug]`.
 
-### Phase 1D: Downloads UI Migration Slice
-
-- Migrated the home hero toward the Downloads editorial hierarchy: latest issue badge, large Fraunces headline, and read/write CTAs.
-- Added `apps/web/src/components/home/HomeFeed.tsx` for interactive category filtering on the home page using real article data instead of mock data.
-- Migrated login/signup into a shared split-screen editorial auth frame at `apps/web/src/components/auth/AuthFrame.tsx`.
-- Polished the write shell with a sticky OpenForum Studio topbar, draft status, reading stats, and stronger metadata layout while preserving the existing advanced Tiptap editor.
-- Added a protected `/profile` route with current-user profile loading/updating through `/api/v1/users/me`.
-- Updated the navbar so authenticated users can open their profile without being signed out unexpectedly.
-
 ### Phase 1C: Public Article Detail Access
 
 - Updated `apps/web/src/middleware.ts` so published article detail routes are public.
@@ -91,6 +83,22 @@ Current local blocker:
 - Authentication is student-only. Allowed domains are `@csvtu.ac.in` and `@students.csvtu.ac.in`.
 - Published articles are public.
 - Article creation, rewrite/editing, updating, deletion, comments, likes, bookmarks, follows, and profile changes require authentication.
+- Public profiles should expose only display name, avatar, bio, follower count, and published-article stats/articles.
+- Public profiles must not expose private fields such as email, roll number, auth provider, bookmarks, drafts, or internal account metadata.
+- Comments follow a YouTube-style access model:
+  - public readers can read articles and comments.
+  - only authenticated CSVTu users can create comments.
+  - comment authors can edit/delete their own comments.
+  - editors/admins can hide/delete any comment for moderation.
+  - no approval queue is required for launch unless abuse becomes a problem.
+- Role model:
+  - every valid CSVTu user can write and comment.
+  - editors/admins exist only for moderation, emergency control, and platform maintenance.
+  - normal users must never be able to edit/delete another user's article or comment.
+- Data/API strategy:
+  - the frontend should use the Rust API as the main gateway for product behavior.
+  - Supabase should provide Auth, Postgres, and RLS as the database/security foundation.
+  - direct browser access to Supabase tables should not be used for core product flows.
 - GitHub OAuth is acceptable only when the GitHub account exposes an allowed school email. Many students may need Google OAuth because GitHub accounts often use personal email addresses.
 - Google Sheets and Google Drive providers should be removed from the production path.
 - No old data migration is required. OpenForum is starting fresh on the new schema.
@@ -142,10 +150,6 @@ Done:
 - Theme/dark-mode foundation.
 - Auth/write/editor token cleanup.
 - Article archive and article detail polish.
-- Home hero/feed migration with real-data category filtering.
-- Split-screen auth page migration for login/signup.
-- First profile page surface backed by the Rust API.
-- Write shell polish while preserving advanced editor features.
 
 Next:
 - Debug local CSS/static asset loading before continuing UI polish:
@@ -153,16 +157,16 @@ Next:
   - Verify `/_next/static/css/*` requests are not being blocked or routed through middleware incorrectly.
   - Clear/rebuild `.next` if the dev cache is stale.
   - Confirm the navbar logo has explicit intrinsic dimensions so it cannot dominate the page if utility CSS fails.
-- Finish remaining home page details after browser QA, if the Downloads reference still has gaps.
+- Finish the home page with the Downloads-style editorial hierarchy while preserving real article data.
 - Polish About, Guidelines, Privacy, and Terms pages with the new visual system.
+- Upgrade login/signup toward the Downloads split-screen editorial design.
 - Continue write page migration:
   - Cover image drag/drop polish.
+  - Sticky topbar and publish controls.
   - Subtitle/summary handling if the backend contract supports it.
+  - Writing stats/read-time surface.
   - Preserve the current advanced Tiptap features.
-- Continue profile polish:
-  - public author profile pages.
-  - follow state/count display.
-  - richer author article tabs.
+- Add or polish profile pages once API/profile contracts are clear.
 - Run a complete mobile and dark-mode visual pass.
 
 ### Phase 2: Supabase Database And Data
@@ -201,11 +205,8 @@ Done:
 - Added backend integration coverage for article update/delete and social flows.
 
 TODO:
-- Add API response fields or a state endpoint for initial current-user social state:
-  - whether the current user liked the article.
-  - whether the current user bookmarked the article.
-  - whether the current user follows the author.
 - Review profile fetch/update flow and decide whether Supabase REST remains the best path or direct Postgres is cleaner.
+- Add editor/admin moderation endpoints for hiding/deleting any comment.
 - Add backend tests for explicit auth domain rejection and RLS-compatible data access.
 
 ### Phase 4: Frontend API Integration
@@ -218,12 +219,10 @@ Done:
 - Article comments UI now reads public comments and posts authenticated comments.
 - Article authors/editors/admins now get inline article edit/delete controls on detail pages.
 - Comment authors now get inline comment edit/delete controls.
-- Current-user profile page now reads/updates through the authenticated Rust API.
 
 TODO:
-- Fix the local CSS/static loading issue before relying on browser screenshots for UI acceptance.
 - Deploy or run the updated Rust API where the web app points, otherwise the new article/comment controls will hit missing endpoints.
-- Add public author profile pages and follow UI backed by real profile/article/follow data.
+- Connect profile pages to real profile/article/follow data.
 - Verify publish/edit/delete flows from `/write` against the selected backend provider.
 - Decide whether article editing should remain inline on detail pages or move into a full `/write?slug=...` / edit route using the richer editor.
 - Improve empty, loading, and error states for all API-backed screens.
@@ -254,12 +253,36 @@ TODO:
 - Confirm Render/Vercel environment variables and deployment settings.
 - Check production logs after first deploy.
 
-## Open Decisions
+## Finalized Product Rules
 
-- Should public profile pages expose full profile information or only display name, avatar, bio, and published-article stats?
-- Should comments be public-readable with hidden/deleted moderation states, or should moderation be added before public release?
-- Should student-only write access require any extra role gate beyond allowed email domain, such as `writer`, `editor`, or `admin`?
-- Should the Data API remain enabled for public schema tables, or should the app rely only on the Rust API after backend integration is complete?
+- Public article reading is open to everyone.
+- Public profile pages expose only display name, avatar, bio, follower count, and published-article stats/articles.
+- Writing, commenting, liking, bookmarking, following, and profile edits require authenticated CSVTu users.
+- All valid CSVTu users can write and comment.
+- Editors/admins are reserved for moderation and emergency control.
+- Comment authors can edit/delete their own comments.
+- Editors/admins can hide/delete any comment.
+- There is no comment approval queue for launch.
+- The frontend should talk to the Rust API for core product behavior.
+- Supabase remains the Auth/Postgres/RLS foundation, not the browser-facing product API for core flows.
+
+## Remaining Deployment Steps
+
+1. Finish write/edit flow polish:
+   - cover image drag/drop UX.
+   - full article edit route or `/write?slug=...` flow.
+2. Implement editor/admin comment moderation:
+   - hide/delete any comment.
+   - UI controls visible only to editor/admin roles.
+3. Run end-to-end local smoke test:
+   - login.
+   - create article.
+   - upload image.
+   - publish.
+   - like/bookmark/comment/follow.
+   - edit/delete article and comment.
+4. Deploy updated Rust API to Render and smoke test new endpoints.
+5. Deploy updated web app to Vercel and run production QA.
 
 ## Working Rules For Future Agent Work
 
@@ -268,6 +291,12 @@ TODO:
 - Keep edits scoped to the active migration phase.
 - Do not commit or print secrets.
 - Prefer real data paths over mock data.
+- Route core product behavior through the Rust API. Do not add direct browser-to-Supabase table access for articles, comments, profiles, likes, bookmarks, follows, uploads, or moderation.
+- Keep Supabase RLS enabled and treat it as a security backstop even when the Rust API is the primary gateway.
+- Public profile UI must never expose private account data. Show only display name, avatar, bio, follower count, and published-article stats/articles.
+- Preserve the comment policy: public read, authenticated CSVTu commenting, author edit/delete, editor/admin moderation, no approval queue for launch.
+- Preserve the role policy: all valid CSVTu users can write/comment; editors/admins are only for moderation and emergency control.
+- When adding moderation features, enforce permissions in the Rust API first, then reflect them in the frontend UI.
 - After visible frontend changes, run typecheck, tests, and build when practical.
 - After backend or database changes, verify both schema behavior and application behavior.
 - Keep this file updated whenever a phase starts, completes, or changes direction.

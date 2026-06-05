@@ -18,6 +18,9 @@ export const ROUTES = {
     callback: "/auth/callback",
     error: "/auth/error",
   },
+  author: {
+    detail: (id: string) => `/authors/${id}`,
+  },
   article: {
     detail: (slug: string) => `/articles/${slug}`,
     detailLegacy: (slug: string) => `/article/${slug}`,

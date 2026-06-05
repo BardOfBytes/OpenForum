@@ -5,6 +5,7 @@ import { Footer } from "@/components/layout/Footer";
 import { createClient } from "@/lib/supabase/server";
 import { isAllowedInstitutionalEmail } from "@/lib/auth/allowed-email";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
 import { ROUTES } from "@/lib/routes";
 import { ProfileClient } from "./ProfileClient";
 
@@ -43,7 +44,9 @@ export default async function ProfilePage() {
   try {
     articles = await getArticles({ perPage: 50 });
   } catch (error) {
-    console.error("[profile] Failed to load articles:", error);
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[profile] Failed to load articles:", error);
+    }
   }
 
   return (
