@@ -197,15 +197,14 @@ async fn update_article(
     // If the author clears the subtitle/deck, fall back to the excerpt so the
     // detail page never renders an empty deck. Prefer an excerpt sent in the
     // same patch; otherwise drop the blank subtitle so the existing one is kept.
-    if let Some(subtitle) = patch.subtitle.as_deref() {
-        if subtitle.trim().is_empty() {
-            patch.subtitle = patch
-                .excerpt
-                .as_deref()
-                .map(str::trim)
-                .filter(|excerpt| !excerpt.is_empty())
-                .map(str::to_string);
-        }
+    if let Some(subtitle) = patch.subtitle.as_deref()
+        && subtitle.trim().is_empty() {
+        patch.subtitle = patch
+            .excerpt
+            .as_deref()
+            .map(str::trim)
+            .filter(|excerpt| !excerpt.is_empty())
+            .map(str::to_string);
     }
 
     let article = state

@@ -119,10 +119,9 @@ impl PostgresArticlesService {
         } else {
             None
         };
-        if let Some(cache_key) = cache_key.as_deref() {
-            if let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(cache_key).await {
-                return Ok(cached);
-            }
+        if let Some(cache_key) = cache_key.as_deref()
+            && let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(cache_key).await {
+            return Ok(cached);
         }
 
         let rows: Vec<ArticlePreviewRow> = sqlx::query_as(
@@ -258,10 +257,9 @@ impl PostgresArticlesService {
         } else {
             None
         };
-        if let Some(cache_key) = cache_key.as_deref() {
-            if let Ok(Some(cached)) = self.cache.get::<u32>(cache_key).await {
-                return Ok(cached);
-            }
+        if let Some(cache_key) = cache_key.as_deref()
+            && let Ok(Some(cached)) = self.cache.get::<u32>(cache_key).await {
+            return Ok(cached);
         }
 
         let count: i64 = sqlx::query_scalar(
