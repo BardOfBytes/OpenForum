@@ -11,7 +11,7 @@ import psycopg
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CREDS_PATH = ROOT / "supabase_creds.txt"
+DEFAULT_CREDS_PATH = ROOT / "supabase_creds.txt"
 SQL_PATH = ROOT / "supabase" / "migrations" / "002_create_openforum_public_schema.sql"
 PUBLIC_TABLES = ("profiles", "articles", "bookmarks", "likes", "comments", "follows")
 COMMENT_MODERATION_COLUMNS = ("is_hidden", "hidden_at", "hidden_by")
@@ -26,20 +26,26 @@ def read_creds() -> dict[str, str]:
         if not line or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        values[key.strip().lower()] = value.strip()
+        values[normalize_key(key)] = value.strip()
     return values
 
 
+def normalize_key(key: str) -> str:
+    return key.strip().lower().replace(" ", "_")
+
+
 def conninfo_from_creds(creds: dict[str, str], use_pooler: bool = False) -> str:
-    project_url = creds.get("project url", "")
-    password = creds.get("db pass", "")
+    project_url = creds.get("project_url", "")
+    password = creds.get("db_pass", "")
     match = re.search(r"https://([a-z0-9]+)\.supabase\.co/?$", project_url)
     if not match or not password:
         raise RuntimeError("supabase_creds.txt is missing Project URL or DB pass")
     project_ref = match.group(1)
 
     if use_pooler:
-        pooler = creds.get("pooler connection string", "")
+        pooler = creds.get("pooler_connection_string", "") or creds.get(
+            "poller_connection_string", ""
+        )
         pooler_match = re.search(r"@([^:/]+):(\d+)/([^?\s]+)", pooler)
         if not pooler_match:
             raise RuntimeError("supabase_creds.txt is missing a valid Pooler Connection string")
@@ -67,6 +73,9 @@ def conninfo_from_creds(creds: dict[str, str], use_pooler: bool = False) -> str:
 
 
 def main() -> int:
+    global CREDS_PATH
+    CREDS_PATH = Path(sys.argv[1]).expanduser().resolve() if len(sys.argv) > 1 else DEFAULT_CREDS_PATH
+
     if not CREDS_PATH.exists():
         raise RuntimeError(f"Missing credentials file: {CREDS_PATH}")
     if not SQL_PATH.exists():
@@ -203,6 +212,22 @@ def main() -> int:
             )
             article_contract_rows = len(cur.fetchall())
 
+            cur.execute(
+                """
+                select count(*)::int
+                from pg_proc p
+                join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'public'
+                  and p.prosecdef = true
+                  and (
+                    has_function_privilege('public', p.oid, 'EXECUTE')
+                    or has_function_privilege('anon', p.oid, 'EXECUTE')
+                    or has_function_privilege('authenticated', p.oid, 'EXECUTE')
+                  )
+                """
+            )
+            unsafe_security_definer_count = int(cur.fetchone()[0])
+
     print("Created/verified tables: " + ", ".join(tables))
     print(
         "RLS policies: "
@@ -213,6 +238,7 @@ def main() -> int:
     print(f"Article subtitle column: articles.subtitle={has_article_subtitle}")
     print(f"Comment moderation index: {COMMENT_MODERATION_INDEX}={has_moderation_index}")
     print(f"Article list contract query: ok rows={article_contract_rows}")
+    print(f"Unsafe public SECURITY DEFINER functions: {unsafe_security_definer_count}")
     return 0
 
 

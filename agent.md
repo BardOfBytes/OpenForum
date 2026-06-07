@@ -1,6 +1,6 @@
 # OpenForum Migration Agent Notes
 
-Last updated: 2026-06-07
+Last updated: 2026-06-07 (UI port complete; infra migration to Singapore in progress)
 
 This file is the working control document for migrating the production GitHub OpenForum repo to the newer Downloads/Replit UI while preserving the real backend, auth, data, editor, and deployment behavior.
 
@@ -29,8 +29,8 @@ Execution rule: **one slice at a time, each gated by user review.** Do not start
 - Migration strategy: fully replace the GitHub visual presentation layer with the Downloads/Replit UI, route by route and component by component. Do not replace the production architecture with the Vite prototype.
 - Styling constraint: GitHub app uses Tailwind v3 patterns. Downloads app uses a newer token style. Port tokens/classes intentionally; do not blindly copy Tailwind v4 directives.
 - Component constraint: avoid importing a large shadcn/Radix surface unless a component is actually needed. Prefer existing local patterns and small custom components.
-- Secrets: `supabase_creds.txt` and `Render.env` are local-only and ignored. Do not commit or quote credential values.
-- Supabase note: schema has already been applied directly to the existing project. Do not commit Supabase migration files for this migration unless that decision changes.
+- Secrets: `supabase_creds.txt`, `new_supabase_creds.txt`, `*_creds.txt`, `Render.env`, `.env`, and `apps/web/.env.local` are local-only and gitignored. Do not commit or quote credential values. `.env.example` files (root, `apps/api`, `apps/web`) are tracked templates with placeholders only.
+- Supabase note: as of 2026-06-07 the project is being migrated to a NEW Supabase project `OpenForum-New` (ref `spyonburfyoxniulledb`, region `ap-southeast-1` / Singapore) to co-locate with Render (Singapore) and Upstash Redis (Singapore). The old project (`ovvcbwzfsnnsitcfnqoc`, Sydney `ap-southeast-2`) is being retired. Schema/RLS for the new project is reproducible via `apps/api/scripts/bootstrap_new_project.sql` (manual SQL Editor run) plus SQLx migrations `0001`–`0004`. RLS is now codified in-repo (migration `0004_articles_rls.sql`), reversing the earlier "do not commit Supabase migration files" stance for the articles RLS.
 
 ## Non-Negotiable UI Migration Rules
 
@@ -107,6 +107,24 @@ The frontend migration direction changed from selective UI polish to complete Do
 2026-06-07 note: Reviewed `/guidelines`, `/privacy`, `/terms`. They render via `components/pages/EditorialInfoPage.tsx`, which is already fully token-based and visually consistent with the migrated Downloads design system (`container-editorial`, `font-heading`, `text-accent`, radial gradient hero, rounded accent closing card). The Downloads reference app has no dedicated policy pages. Left these pages unchanged; the earlier "retire EditorialInfoPage" TODO is stale relative to its current migrated state.
 
 2026-06-07 update: Added the article subtitle/deck as a real first-class field end-to-end (per user request, replacing the earlier "skip subtitle" decision). DB: added `subtitle text NOT NULL DEFAULT ''` to `public.articles` (supabase migration 002 inline + idempotent ALTER, new API migration `0002_add_article_subtitle.sql`) and applied + verified it live via the pooler (`articles.subtitle=True`). Backend: added `subtitle` to `Article`, `NewArticle`, `UpdateArticle`, both Postgres row structs, the detail SELECT, INSERT, and UPDATE (renumbered binds), and the in-memory service. Fallback rule: on create/update, a blank/whitespace subtitle falls back to the article excerpt (the preview) so the detail deck is never empty — enforced in the Rust routes layer and mirrored in the Write UI. Frontend: added `subtitle` to `ArticleDetail`/`ApiArticle`/`mapDetail`, a serif-italic subtitle textarea under the title on `/write` (with draft autosave/restore + edit prefill), and the article detail page renders `subtitle || excerpt` as the deck. Added a backend integration test for explicit-subtitle storage and blank→excerpt fallback. `ArticlePreview`/cards still use `excerpt` only. Note: this is a backend schema/contract change — redeploy the Rust API before the web app relies on the new field in production.
+
+2026-06-07 update: User shifted OpenForum to a new Supabase database. Applied the full `supabase/migrations/002_create_openforum_public_schema.sql` schema to the new project using `new_supabase_creds.txt` via `scripts/apply_supabase_public_schema.py new_supabase_creds.txt`. Verified tables (`profiles`, `articles`, `bookmarks`, `likes`, `comments`, `follows`), RLS policy counts, comment moderation columns/index, `profiles.headline=True`, `articles.subtitle=True`, and the article list contract query. Also verified the Supabase REST Data API returns HTTP 200 JSON arrays for all six public tables with the new publishable key. Updated local secret env files (`.env`, `Render.env`, `apps/web/.env.local`) to point at the new Supabase project and pooler URL with `OPENFORUM_RUN_API_MIGRATIONS=false`; do not quote or commit the credential values.
+
+2026-06-07 update: Resolved new Supabase Security Advisor warnings for `public.rls_auto_enable()`. The advisor flagged that `PUBLIC`/anon and signed-in users could execute a `SECURITY DEFINER` function. Revoked `EXECUTE` from `PUBLIC`, `anon`, and `authenticated`, leaving privileged execution available to service/admin roles. Added the idempotent revoke block to `supabase/migrations/002_create_openforum_public_schema.sql` and extended `scripts/apply_supabase_public_schema.py` to verify `Unsafe public SECURITY DEFINER functions: 0`.
+
+2026-06-07 update: **UI port complete.** All 13 slices done — every route now uses the Downloads/Replit design system. Final polish pass: auth pages use the written "OpenForum" wordmark only (logo.png is favicon-only, no logo image on auth screens); hero section de-cluttered (removed vertical line + decorative circle, softened the radial glow, reduced font weight, made the category slider visible on first load by dropping the full-viewport min-height); removed redundant `pt-24` from every page `<main>` (the Navbar already renders an `h-16` spacer — the double-spacing source); added the "Your ideas deserve a platform" CTA banner to `/categories` and `/categories/[slug]` and widened the CTA→footer gap (`mb-16`) on home/categories/about; added a share popover (Copy link + Share on X via inline `XIcon` SVG, since lucide-react has no Twitter/X export) to article actions; added a mobile-nav close (✕) button and raised the header to `z-overlay` while the menu is open so the hamburger isn't trapped under the overlay.
+
+2026-06-07 update: **CI fixes.** Resolved `clippy::collapsible_if` (collapsed nested `if` into `&&` let-chains) and the follow-on `cargo fmt --check` failure (rustfmt wants `{` on its own line for multi-line let-chains). Hardened `.github/workflows/ci.yml`: pinned `dtolnay/rust-toolchain@1.93.0` (matches local; let-chains need a recent toolchain), bumped Node 18→20, added `pnpm install --frozen-lockfile`, and reordered the production deploy so Render (backend) ships before Vercel (frontend) since the web app depends on the API's endpoints.
+
+2026-06-07 update: **502 root cause fixed (prepared-statement cross-wiring).** The Supabase transaction pooler (`:6543`) was reusing cached prepared-statement plans across the `get_posts` and `count_posts` queries, producing alternating "supplies N parameters, but prepared statement requires M" and "invalid length: expected 16 bytes, found 8" / "no rows returned" decode errors. The existing guard in `apps/api/src/main.rs` only disabled the statement cache when `DATABASE_URL` contained the literal `pooler.supabase.com`; broadened it to also detect `:6543`, `supabase.co:6543`, and `pgbouncer=true`, so `statement_cache_capacity(0)` is applied for the actual pooler URL. Verified the local API returns 200 on `/api/v1/articles`.
+
+2026-06-07 update: **Missing `SUPABASE_SERVICE_KEY`.** `apps/api/src/routes/users.rs` reads `SUPABASE_SERVICE_KEY` for PostgREST profile calls but it was absent from `Render.env` (present only in root `.env`, and as the legacy JWT). Added it (new `sb_secret_` format) to `Render.env` and switched root `.env` to the new format too. Standardized on new-format keys (`sb_publishable_` / `sb_secret_`) across all env files.
+
+2026-06-07 update: **Redis recreated.** The old Upstash DB (`just-adder-70742`) was auto-deleted after 14 days of free-tier inactivity (NXDOMAIN), causing `Failed to connect to Redis` warnings (rate limiter degrades to allow-all, cache bypassed — non-fatal). Created a new free Singapore Upstash DB (`humble-cub-112144`, `ap-southeast-1`, native `rediss://...:6379`, eviction on), verified AUTH/SET/GET/DEL round-trip, and updated `UPSTASH_REDIS_URL`/`UPSTASH_REDIS_TOKEN` in `Render.env` and root `.env`.
+
+2026-06-07 update: **Supabase migration to Singapore applied.** Created a new Supabase project `OpenForum-New` (`spyonburfyoxniulledb`, `ap-southeast-1`) so DB + API + Redis are all Singapore-local (old project was Sydney `ap-southeast-2`; Supabase cannot change region in place). Updated all real env files (`Render.env`, root `.env`, `apps/web/.env.local`) to the new project's pooler URL, Supabase URL, publishable key, service key, and JWT secret (same DB password, URL-encoded). Applied `supabase/migrations/002_create_openforum_public_schema.sql` to the new project and verified all app tables, RLS policy counts, public REST table access, `profiles.headline`, `articles.subtitle`, and the article list contract query. Resolved the externally-added `public.rls_auto_enable()` Security Advisor warnings by revoking `EXECUTE` from `PUBLIC`, `anon`, and `authenticated`; the schema verifier reports `Unsafe public SECURITY DEFINER functions: 0`. Remaining manual steps: re-configure Google OAuth provider + redirect URLs + Google Cloud callback for the new project, optionally migrate old data, then paste `Render.env` into Render and redeploy.
+
+2026-06-07 update: **Env example files corrected.** `apps/api/.env.example` now lists all vars the API actually reads (added `SUPABASE_SERVICE_KEY`, `ARTICLES_PROVIDER`, `STORAGE_PROVIDER`) and documents that dotenvy finds the repo-root `.env` (no separate `apps/api/.env` needed). Added a new `apps/web/.env.example` (client-safe `NEXT_PUBLIC_` vars only, with an explicit warning never to put the service key there).
 
 Resolved local blockers:
 - The earlier local CSS/static preview issue was reported as fixed by the user.
@@ -383,15 +401,14 @@ TODO:
 
 ## Remaining Deployment Steps
 
-1. Run end-to-end local smoke test:
-   - login.
-   - create article.
-   - upload image.
-   - publish.
-   - like/bookmark/comment/follow.
-   - edit/delete article and comment.
-2. Deploy updated Rust API to Render using the corrected Supabase pooler `DATABASE_URL` and smoke test new endpoints.
-3. Deploy updated web app to Vercel and run production QA.
+New-Supabase-project (Singapore) cutover, in order:
+1. Configure Auth on the new project: enable Google provider (client ID/secret), set Site URL + redirect URLs (`https://openforum-web.vercel.app`, `http://localhost:3000`), and add the new callback `https://spyonburfyoxniulledb.supabase.co/auth/v1/callback` to Google Cloud Console authorized redirect URIs.
+2. (Optional) Migrate old Sydney data via `pg_dump`/`pg_restore` if existing content must be preserved (fresh-start is acceptable per product rules).
+3. Run end-to-end local smoke test against the new project:
+   - login, create article, upload image, publish, like/bookmark/comment/follow, edit/delete article and comment.
+4. Paste the updated `Render.env` into Render's environment (new Supabase + new Redis values) and redeploy the Rust API; smoke test endpoints.
+5. Update Vercel env vars to the new Supabase URL + publishable key, then deploy the web app and run production QA.
+8. After the new project is verified, retire/pause the old Sydney project and rotate any secrets exposed during setup (DB password, service key, Redis token).
 
 ## Working Rules For Future Agent Work
 

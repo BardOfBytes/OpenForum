@@ -42,7 +42,19 @@ async fn main() -> anyhow::Result<()> {
     let mut connect_options = PgConnectOptions::from_str(&config.database_url)
         .context("Failed to parse Postgres DATABASE_URL")?;
 
-    if config.database_url.contains("pooler.supabase.com") {
+    // Detect a transaction-pooling proxy (Supabase Supavisor / PgBouncer).
+    // Such poolers multiplex many client sessions over a small set of server
+    // connections, so server-side prepared statements cached by sqlx get
+    // cross-wired between queries — producing "invalid length"/"no rows"
+    // decode errors. Disabling the statement cache makes sqlx send each query
+    // without a persistent prepared statement, which is pooler-safe.
+    let url = config.database_url.as_str();
+    let uses_pooler = url.contains("pooler.supabase.com")
+        || url.contains("supabase.co:6543")
+        || url.contains(":6543")
+        || url.contains("pgbouncer=true");
+
+    if uses_pooler {
         connect_options = connect_options.statement_cache_capacity(0);
     }
 
