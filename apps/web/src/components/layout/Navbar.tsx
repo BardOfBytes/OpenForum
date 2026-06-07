@@ -198,7 +198,8 @@ export function Navbar({
       <motion.header
         role="banner"
         className={[
-          "fixed top-0 left-0 right-0 z-sticky",
+          "fixed top-0 left-0 right-0",
+          mobileOpen ? "z-overlay" : "z-sticky",
           "transition-all duration-300 ease-out-expo",
           scrolled
             ? "glass border-b border-border-light py-3 shadow-sm"
@@ -389,7 +390,26 @@ export function Navbar({
             />
 
             {/* Menu content */}
-            <div className="relative z-10 flex flex-col px-6 pt-24 pb-8 h-full">
+            <div className="relative z-10 flex flex-col px-6 pt-6 pb-8 h-full">
+              {/* Close button */}
+              <div className="flex items-center justify-between mb-8">
+                <Link
+                  href={ROUTES.home}
+                  className="font-serif text-2xl font-bold tracking-tight text-foreground"
+                  onClick={() => setMobileOpen(false)}
+                >
+                  Open<span className="font-light italic text-primary">Forum</span>
+                </Link>
+                <button
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  aria-label="Close menu"
+                >
+                  <svg className="w-5 h-5 text-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
               <div className="flex flex-col gap-2">
                 {NAV_LINKS.map((link, i) => (
                   <motion.div
