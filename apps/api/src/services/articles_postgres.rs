@@ -271,18 +271,20 @@ impl PostgresArticlesService {
             LEFT JOIN profiles p ON p.id = a.author_id
             WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
               AND ($1::text IS NULL OR a.category_slug = $1)
-              AND ($2::uuid IS NULL OR a.author_id = $2)
+              AND ($4::uuid IS NULL OR a.author_id = $4)
               AND (
-                $3::text IS NULL
-                OR a.title ILIKE '%' || $3 || '%'
-                OR a.excerpt ILIKE '%' || $3 || '%'
-                OR a.body ILIKE '%' || $3 || '%'
-                OR coalesce(p.display_name, p.username, p.email, '') ILIKE '%' || $3 || '%'
+                $5::text IS NULL
+                OR a.title ILIKE '%' || $5 || '%'
+                OR a.excerpt ILIKE '%' || $5 || '%'
+                OR a.body ILIKE '%' || $5 || '%'
+                OR coalesce(p.display_name, p.username, p.email, '') ILIKE '%' || $5 || '%'
               )
             "#,
         )
         .persistent(false)
         .bind(category)
+        .bind(0_i64)
+        .bind(0_i64)
         .bind(author)
         .bind(search)
         .fetch_one(&self.pool)
