@@ -17,18 +17,18 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install pnpm
         run: npm install -g pnpm@9.15.4
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Lint Rules
         run: pnpm --filter @openforum/web lint
 
-      - name: Typecheck 
+      - name: Typecheck
         run: pnpm --filter @openforum/web typecheck
 
       - name: Web Tests
@@ -42,7 +42,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.93.0
         with:
           components: clippy, rustfmt
 
@@ -67,7 +67,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.93.0
 
       - name: Cargo Cache
         uses: Swatinem/rust-cache@v2
@@ -86,7 +86,7 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
-        
+
       - name: Trigger Vercel Preview
         uses: amondnet/vercel-action@v20
         with:
@@ -108,7 +108,7 @@ jobs:
         run: npm install -g pnpm@9.15.4
 
       - name: Install Dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Validate Vercel Secrets
         run: |
@@ -125,12 +125,8 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy Frontend (Vercel)
-        run: npx vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
+      # Deploy the backend first so the new API endpoints are live before the
+      # frontend (which depends on them) goes out.
       - name: Deploy Backend (Render)
         run: |
           if [ -z "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" ]; then
@@ -139,3 +135,9 @@ jobs:
           fi
           echo "Triggering Render rebuild via Webhook..."
           curl -s -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+
+      - name: Deploy Frontend (Vercel)
+        run: npx vercel deploy --prod --yes --token="${{ secrets.VERCEL_TOKEN }}"
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

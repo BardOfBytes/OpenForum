@@ -198,7 +198,8 @@ async fn update_article(
     // detail page never renders an empty deck. Prefer an excerpt sent in the
     // same patch; otherwise drop the blank subtitle so the existing one is kept.
     if let Some(subtitle) = patch.subtitle.as_deref()
-        && subtitle.trim().is_empty() {
+        && subtitle.trim().is_empty()
+    {
         patch.subtitle = patch
             .excerpt
             .as_deref()

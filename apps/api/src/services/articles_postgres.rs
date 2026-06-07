@@ -120,7 +120,8 @@ impl PostgresArticlesService {
             None
         };
         if let Some(cache_key) = cache_key.as_deref()
-            && let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(cache_key).await {
+            && let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(cache_key).await
+        {
             return Ok(cached);
         }
 
@@ -258,7 +259,8 @@ impl PostgresArticlesService {
             None
         };
         if let Some(cache_key) = cache_key.as_deref()
-            && let Ok(Some(cached)) = self.cache.get::<u32>(cache_key).await {
+            && let Ok(Some(cached)) = self.cache.get::<u32>(cache_key).await
+        {
             return Ok(cached);
         }
 
