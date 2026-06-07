@@ -48,7 +48,7 @@ export function CategoriesBar() {
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: "-40px" }}
-          className="flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 md:mx-0 md:px-0 md:flex-wrap scrollbar-hide"
+          className="no-scrollbar flex gap-3 overflow-x-auto pb-2 -mx-6 px-6 md:mx-0 md:px-0 md:flex-wrap"
           role="navigation"
           aria-label="Category navigation"
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}

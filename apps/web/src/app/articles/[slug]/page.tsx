@@ -5,12 +5,8 @@ import { notFound } from "next/navigation";
 import katex from "katex";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
-import { ArticleContent } from "@/components/articles/ArticleContent";
-import { ArticleActions } from "@/components/articles/ArticleActions";
-import { ArticleComments } from "@/components/articles/ArticleComments";
-import { ArticleManagement } from "@/components/articles/ArticleManagement";
+import { ArticleDetailExperience } from "@/components/articles/ArticleDetailExperience";
 import { ReadingProgress } from "@/components/articles/ReadingProgress";
-import { ArticleGrid } from "@/components/home/ArticleGrid";
 import { createClient } from "@/lib/supabase/server";
 import {
   ApiHttpError,
@@ -55,18 +51,6 @@ export async function generateMetadata({ params }: ArticleDetailPageProps): Prom
     return {
       title: "Article",
     };
-  }
-}
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("en-IN", {
-      month: "long",
-      day: "numeric",
-      year: "numeric",
-    });
-  } catch {
-    return iso;
   }
 }
 
@@ -280,166 +264,15 @@ export default async function ArticleDetailPage({ params }: ArticleDetailPagePro
       <>
         <ReadingProgress />
         <Navbar />
-        <main className="py-12 md:py-16">
-          <article className="container-narrow">
-            <div className="mb-8">
-              <span
-                className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium font-body"
-                style={{
-                  backgroundColor: `${article.category.color}22`,
-                  color: article.category.color,
-                }}
-              >
-                {article.category.name}
-              </span>
-
-              <h1 className="font-heading text-3xl md:text-5xl font-semibold text-text tracking-tight mt-4">
-                {article.title}
-              </h1>
-
-              <p className="font-body text-text-secondary mt-4 text-lg leading-relaxed">
-                {article.excerpt}
-              </p>
-
-              <div className="mt-6 flex flex-col gap-4 border-y border-border-light py-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-text-tertiary font-body">
-                  {article.author.id ? (
-                    <Link
-                      href={ROUTES.author.detail(article.author.id)}
-                      className="font-medium text-text transition-colors hover:text-accent"
-                    >
-                      {article.author.name}
-                    </Link>
-                  ) : (
-                    <span className="font-medium text-text">{article.author.name}</span>
-                  )}
-                  <span className="mx-2">·</span>
-                  <time dateTime={article.publishedAt}>{formatDate(article.publishedAt)}</time>
-                  <span className="mx-2">·</span>
-                  <span>{article.readTimeMinutes} min read</span>
-                </div>
-                <ArticleActions
-                  slug={article.slug}
-                  title={article.title}
-                  initialLikeState={articleSocialState?.like}
-                  initialBookmarkState={articleSocialState?.bookmark}
-                />
-              </div>
-            </div>
-
-            <ArticleManagement article={article} />
-
-            <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-surface min-h-[220px] relative">
-              {article.coverImageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={article.coverImageUrl}
-                  alt=""
-                  className="w-full h-full max-h-[460px] object-cover"
-                />
-              ) : (
-                <div
-                  className="absolute inset-0"
-                  style={{
-                    background: `linear-gradient(135deg, ${article.category.color}20 0%, ${article.category.color}06 100%)`,
-                  }}
-                  aria-hidden="true"
-                >
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="font-body text-sm uppercase tracking-widest text-text-tertiary">
-                      {article.category.name}
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {leadingVideoUrl && (
-              <div className="mb-10 rounded-xl overflow-hidden border border-border-light bg-bg-elevated shadow-sm">
-                <iframe
-                  src={leadingVideoUrl}
-                  title={`${article.title} video`}
-                  className="block w-full aspect-video"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                  loading="lazy"
-                  referrerPolicy="strict-origin-when-cross-origin"
-                />
-              </div>
-            )}
-
-            <ArticleContent html={renderedBody} />
-
-            <ArticleComments slug={article.slug} />
-
-            {article.tags.length > 0 && (
-              <div className="mt-12 pt-6 border-t border-border-light">
-                <h2 className="font-body text-sm uppercase tracking-widest text-text-tertiary mb-3">
-                  Tags
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  {article.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-border px-3 py-1 text-xs text-text-secondary"
-                    >
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {relatedArticles.length > 0 && (
-              <section className="mt-14 pt-8 border-t border-border-light">
-                <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
-                  <div>
-                    <h2 className="font-heading text-2xl font-semibold text-text tracking-tight">
-                      More To Read
-                    </h2>
-                    <p className="font-body text-sm text-text-secondary mt-1">
-                      {knownCategory
-                        ? `More stories from ${knownCategory.name}`
-                        : "Related stories from the latest feed"}
-                    </p>
-                  </div>
-                  <Link
-                    href={knownCategory ? ROUTES.category.detail(categorySlug) : ROUTES.articles}
-                    className="inline-flex items-center text-sm font-medium text-accent hover:text-accent-hover transition-colors"
-                  >
-                    {knownCategory ? "Browse category" : "Browse all articles"}
-                  </Link>
-                </div>
-
-                <ArticleGrid articles={relatedArticles} maxColumns={2} />
-              </section>
-            )}
-
-            <section className="mt-12 rounded-2xl border border-border-light bg-surface p-7 md:p-8">
-              <h2 className="font-heading text-2xl font-semibold text-text tracking-tight mb-3">
-                Join The Conversation
-              </h2>
-              <p className="font-body text-text-secondary leading-relaxed mb-5">
-                Have a response, counterpoint, or original angle? Publish your own piece and keep
-                the discussion moving.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Link
-                  href={ROUTES.write}
-                  className="inline-flex items-center rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-text-inverse hover:bg-accent-hover transition-colors"
-                >
-                  Write your article
-                </Link>
-                <Link
-                  href={ROUTES.articles}
-                  className="inline-flex items-center rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-text hover:bg-bg-elevated transition-colors"
-                >
-                  Back to latest
-                </Link>
-              </div>
-            </section>
-          </article>
-        </main>
+        <ArticleDetailExperience
+          article={article}
+          renderedBody={renderedBody}
+          leadingVideoUrl={leadingVideoUrl}
+          relatedArticles={relatedArticles}
+          articleSocialState={articleSocialState}
+          categorySlug={categorySlug}
+          knownCategoryName={knownCategory?.name ?? null}
+        />
         <Footer />
       </>
     );

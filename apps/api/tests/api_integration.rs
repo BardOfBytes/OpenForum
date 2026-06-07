@@ -33,6 +33,7 @@ fn test_config() -> AppConfig {
         },
         redis_url: "redis://127.0.0.1:6379".to_string(),
         redis_token: "unused".to_string(),
+        run_api_migrations: false,
     }
 }
 
@@ -72,6 +73,10 @@ fn test_auth_token(email: &str) -> String {
 }
 
 fn test_auth_token_with_user_id(email: &str, user_id: &str) -> String {
+    test_auth_token_with_user_id_and_role(email, user_id, "student")
+}
+
+fn test_auth_token_with_user_id_and_role(email: &str, user_id: &str, role: &str) -> String {
     // Required for auth extractor HS256 validation path in tests.
     unsafe {
         std::env::set_var("AXUM_JWT_SECRET", TEST_JWT_SECRET);
@@ -82,7 +87,7 @@ fn test_auth_token_with_user_id(email: &str, user_id: &str) -> String {
         email: email.to_string(),
         aud: "authenticated".to_string(),
         exp: (Utc::now() + Duration::hours(1)).timestamp() as usize,
-        user_role: "student".to_string(),
+        user_role: role.to_string(),
     };
 
     encode(
@@ -91,6 +96,10 @@ fn test_auth_token_with_user_id(email: &str, user_id: &str) -> String {
         &EncodingKey::from_secret(TEST_JWT_SECRET.as_bytes()),
     )
     .expect("failed to create test JWT")
+}
+
+fn test_auth_token_with_role(email: &str, role: &str) -> String {
+    test_auth_token_with_user_id_and_role(email, "00000000-0000-0000-0000-000000000123", role)
 }
 
 async fn create_test_article(app: axum::Router, token: &str, title: &str) -> Value {
@@ -248,6 +257,152 @@ async fn article_create_authenticated_flow_returns_201_with_slug() {
         slugs.iter().any(|slug| slug == "integration-test-article"),
         "newly created article should be visible in latest article list"
     );
+
+    let first_article = list_body["data"]
+        .as_array()
+        .expect("paginated list data array")
+        .first()
+        .expect("created article preview should be returned");
+    assert_eq!(first_article["featured"], false);
+    assert_eq!(first_article["views"], 0);
+    assert_eq!(first_article["author"]["headline"], Value::Null);
+    assert_eq!(first_article["author"]["articles_published"], 0);
+}
+
+#[tokio::test]
+async fn article_list_supports_author_and_search_filters() {
+    let app = test_app(app_state_with_test_services());
+    let writer_id = "00000000-0000-0000-0000-000000000456";
+    let token = test_auth_token_with_user_id("writer@csvtu.ac.in", writer_id);
+
+    create_test_article(app.clone(), &token, "Filtered Author Story").await;
+
+    let author_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/users/{writer_id}/articles"))
+                .method("GET")
+                .body(Body::empty())
+                .expect("author articles request"),
+        )
+        .await
+        .expect("author articles response");
+    assert_eq!(author_response.status(), StatusCode::OK);
+    let author_body = json_body(author_response).await;
+    assert_eq!(author_body["total"], 1);
+    assert_eq!(author_body["data"][0]["slug"], "filtered-author-story");
+
+    let search_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles?author={writer_id}&q=Filtered"))
+                .method("GET")
+                .body(Body::empty())
+                .expect("filtered list request"),
+        )
+        .await
+        .expect("filtered list response");
+    assert_eq!(search_response.status(), StatusCode::OK);
+    let search_body = json_body(search_response).await;
+    assert_eq!(search_body["total"], 1);
+    assert_eq!(search_body["data"][0]["slug"], "filtered-author-story");
+}
+
+#[tokio::test]
+async fn authors_endpoint_lists_published_contributors() {
+    let app = test_app(app_state_with_test_services());
+    let writer_id = "00000000-0000-0000-0000-000000000789";
+    let token = test_auth_token_with_user_id("contributor@csvtu.ac.in", writer_id);
+
+    create_test_article(app.clone(), &token, "Contributor Directory Story").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/authors")
+                .method("GET")
+                .body(Body::empty())
+                .expect("authors request"),
+        )
+        .await
+        .expect("authors response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let authors = body.as_array().expect("authors should be an array");
+    assert_eq!(authors.len(), 1);
+    assert_eq!(authors[0]["id"], writer_id);
+    assert_eq!(authors[0]["articles_published"], 1);
+    assert_eq!(authors[0]["total_views"], 0);
+}
+
+#[tokio::test]
+async fn article_subtitle_is_stored_and_falls_back_to_excerpt_when_blank() {
+    let app = test_app(app_state_with_test_services());
+    let token = test_auth_token("writer@csvtu.ac.in");
+
+    // Explicit subtitle is preserved.
+    let with_subtitle = json!({
+      "title": "Article With Deck",
+      "subtitle": "An authored standfirst that hooks the reader.",
+      "body": "<p>Body.</p>",
+      "excerpt": "Short preview summary.",
+      "content_gdoc_id": null,
+      "cover_image_url": null,
+      "category_name": "Campus News",
+      "tags": []
+    });
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(with_subtitle.to_string()))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(
+        body["subtitle"],
+        "An authored standfirst that hooks the reader."
+    );
+
+    // Blank subtitle falls back to the excerpt (the article preview).
+    let blank_subtitle = json!({
+      "title": "Article Without Deck",
+      "subtitle": "   ",
+      "body": "<p>Body.</p>",
+      "excerpt": "Short preview summary.",
+      "content_gdoc_id": null,
+      "cover_image_url": null,
+      "category_name": "Campus News",
+      "tags": []
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/v1/articles")
+                .method("POST")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(blank_subtitle.to_string()))
+                .expect("create request"),
+        )
+        .await
+        .expect("create response");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let body = json_body(response).await;
+    assert_eq!(body["subtitle"], "Short preview summary.");
 }
 
 #[tokio::test]
@@ -463,6 +618,159 @@ async fn article_social_endpoints_work_for_authenticated_users() {
     let unlike_body = json_body(unlike_response).await;
     assert_eq!(unlike_body["active"], false);
     assert_eq!(unlike_body["count"], 0);
+}
+
+#[tokio::test]
+async fn comment_moderation_requires_editor_or_admin_and_removes_public_comment() {
+    let app = test_app(app_state_with_test_services());
+    let author_token =
+        test_auth_token_with_user_id("author@csvtu.ac.in", "00000000-0000-0000-0000-000000000111");
+    let other_token =
+        test_auth_token_with_user_id("other@csvtu.ac.in", "00000000-0000-0000-0000-000000000222");
+    let editor_token = test_auth_token_with_user_id_and_role(
+        "editor@csvtu.ac.in",
+        "00000000-0000-0000-0000-000000000333",
+        "editor",
+    );
+
+    let created = create_test_article(app.clone(), &author_token, "Moderated Comments").await;
+    let slug = created["slug"].as_str().expect("created slug");
+    let comment_payload = json!({ "body": "Needs moderation", "parent_id": null });
+    let comment_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles/{slug}/comments"))
+                .method("POST")
+                .header("authorization", format!("Bearer {other_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(comment_payload.to_string()))
+                .expect("comment request"),
+        )
+        .await
+        .expect("comment response");
+    assert_eq!(comment_response.status(), StatusCode::CREATED);
+    let comment = json_body(comment_response).await;
+    let comment_id = comment["id"].as_str().expect("comment id");
+
+    let author_delete_other_comment_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/comments/{comment_id}"))
+                .method("DELETE")
+                .header("authorization", format!("Bearer {author_token}"))
+                .body(Body::empty())
+                .expect("author delete other comment request"),
+        )
+        .await
+        .expect("author delete other comment response");
+    assert_eq!(
+        author_delete_other_comment_response.status(),
+        StatusCode::NOT_FOUND
+    );
+
+    let writer_hide_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/comments/{comment_id}/moderation/hide"))
+                .method("POST")
+                .header("authorization", format!("Bearer {author_token}"))
+                .body(Body::empty())
+                .expect("writer hide request"),
+        )
+        .await
+        .expect("writer hide response");
+    assert_eq!(writer_hide_response.status(), StatusCode::FORBIDDEN);
+
+    let editor_hide_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/comments/{comment_id}/moderation/hide"))
+                .method("POST")
+                .header("authorization", format!("Bearer {editor_token}"))
+                .body(Body::empty())
+                .expect("editor hide request"),
+        )
+        .await
+        .expect("editor hide response");
+    assert_eq!(editor_hide_response.status(), StatusCode::NO_CONTENT);
+
+    let list_comments_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles/{slug}/comments"))
+                .method("GET")
+                .body(Body::empty())
+                .expect("list comments request"),
+        )
+        .await
+        .expect("list comments response");
+    assert_eq!(list_comments_response.status(), StatusCode::OK);
+    let comments = json_body(list_comments_response).await;
+    assert_eq!(comments.as_array().expect("comments array").len(), 0);
+}
+
+#[tokio::test]
+async fn admin_can_delete_any_comment_without_affecting_author_delete_flow() {
+    let app = test_app(app_state_with_test_services());
+    let author_token =
+        test_auth_token_with_user_id("author@csvtu.ac.in", "00000000-0000-0000-0000-000000000111");
+    let commenter_token = test_auth_token_with_user_id(
+        "commenter@csvtu.ac.in",
+        "00000000-0000-0000-0000-000000000222",
+    );
+    let admin_token = test_auth_token_with_role("admin@csvtu.ac.in", "admin");
+
+    let created = create_test_article(app.clone(), &author_token, "Admin Moderated Comments").await;
+    let slug = created["slug"].as_str().expect("created slug");
+    let comment_payload = json!({ "body": "Remove me", "parent_id": null });
+    let comment_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles/{slug}/comments"))
+                .method("POST")
+                .header("authorization", format!("Bearer {commenter_token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(comment_payload.to_string()))
+                .expect("comment request"),
+        )
+        .await
+        .expect("comment response");
+    assert_eq!(comment_response.status(), StatusCode::CREATED);
+    let comment = json_body(comment_response).await;
+    let comment_id = comment["id"].as_str().expect("comment id");
+
+    let admin_delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/comments/{comment_id}/moderation"))
+                .method("DELETE")
+                .header("authorization", format!("Bearer {admin_token}"))
+                .body(Body::empty())
+                .expect("admin delete request"),
+        )
+        .await
+        .expect("admin delete response");
+    assert_eq!(admin_delete_response.status(), StatusCode::NO_CONTENT);
+
+    let list_comments_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles/{slug}/comments"))
+                .method("GET")
+                .body(Body::empty())
+                .expect("list comments request"),
+        )
+        .await
+        .expect("list comments response");
+    assert_eq!(list_comments_response.status(), StatusCode::OK);
+    let comments = json_body(list_comments_response).await;
+    assert_eq!(comments.as_array().expect("comments array").len(), 0);
 }
 
 #[tokio::test]

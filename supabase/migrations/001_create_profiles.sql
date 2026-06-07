@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
               CHECK (role IN ('reader', 'writer', 'editor', 'admin')),
 
   -- Bio (displayed on public profile)
+  headline    TEXT DEFAULT '',
   bio         TEXT DEFAULT '',
 
   -- Timestamps

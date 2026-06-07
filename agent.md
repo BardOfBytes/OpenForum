@@ -1,8 +1,23 @@
 # OpenForum Migration Agent Notes
 
-Last updated: 2026-06-05
+Last updated: 2026-06-07
 
-This file is the working control document for migrating the production GitHub OpenForum repo toward the newer Downloads/Replit UI while preserving the real backend, auth, data, editor, and deployment behavior.
+This file is the working control document for migrating the production GitHub OpenForum repo to the newer Downloads/Replit UI while preserving the real backend, auth, data, editor, and deployment behavior.
+
+## Mission (confirmed 2026-06-07)
+
+Port the **entire** Downloads/Replit OpenForum UI into the production Next app, **pixel-faithfully**, route by route and component by component — and wire the backend (new Rust APIs + curated Supabase schema) for any data the design needs. The Downloads/Replit UI is the visual golden source. The final production app must not look like the older GitHub OpenForum UI on any route, component, color system, spacing system, header, footer, card, form, empty state, or interaction surface.
+
+Locked decisions (2026-06-07):
+- **Fidelity: pixel-faithful.** Downloads is the law for layout/spacing/fonts/colors/icons. Where Downloads shows data prod lacks, ADD the backend API + Supabase column (do not fake it).
+- **Animations: add/port Framer Motion** for full parity (framer-motion is already installed).
+- **Extra prod-only routes** (`/guidelines` `/privacy` `/terms`): keep but restyle to the design system. Drop throwaway routes like `/shinchan`.
+
+Authoritative working docs for this effort:
+- `docs/ui-port-audit.md` — evidence: route-by-route Downloads-vs-prod diff + backend/DB gap list. **Root finding: a shadcn token vocabulary (`bg-primary`/`bg-card`/`text-foreground`/`font-serif`) is used by every migrated + Downloads component but is undefined in the prod Tailwind theme, so migrated surfaces are partly unstyled today — fixing the token layer is Slice 0 and unblocks everything.**
+- `docs/ui-port-plan.md` — the dependency-ordered slice plan (Slice 0 tokens → 1 animation → 2 shared components → 3 nav/footer → 4 home → 5 articles → 6 detail → 7 categories → 8 auth → 9 backend author data → 10 profile/author → 11 about contributors → 12 404/policy/cleanup → 13 QA).
+
+Execution rule: **one slice at a time, each gated by user review.** Do not start the next slice until the current one is reviewed and approved. Run web checks after each frontend slice and cargo checks + Supabase apply/verify after each backend/schema slice.
 
 ## Repo Dynamic
 
@@ -11,15 +26,87 @@ This file is the working control document for migrating the production GitHub Op
 - Production app shape: monorepo with `apps/web` as a Next.js App Router frontend and `apps/api` as a Rust Axum backend.
 - Frontend baseline: real Next app with server routes, Supabase auth flow, advanced Tiptap write experience, article pages, middleware, and tests.
 - Downloads UI baseline: Vite SPA prototype with stronger editorial visuals, dark mode, Framer Motion, polished auth/write/article layouts, and mock data.
-- Migration strategy: migrate UI and UX selectively into the GitHub Next app. Do not replace the production architecture with the Vite prototype.
+- Migration strategy: fully replace the GitHub visual presentation layer with the Downloads/Replit UI, route by route and component by component. Do not replace the production architecture with the Vite prototype.
 - Styling constraint: GitHub app uses Tailwind v3 patterns. Downloads app uses a newer token style. Port tokens/classes intentionally; do not blindly copy Tailwind v4 directives.
 - Component constraint: avoid importing a large shadcn/Radix surface unless a component is actually needed. Prefer existing local patterns and small custom components.
 - Secrets: `supabase_creds.txt` and `Render.env` are local-only and ignored. Do not commit or quote credential values.
 - Supabase note: schema has already been applied directly to the existing project. Do not commit Supabase migration files for this migration unless that decision changes.
 
+## Non-Negotiable UI Migration Rules
+
+- Downloads/Replit UI is the source of truth for visual design.
+- The production Next app must keep its architecture: App Router, Supabase Auth, Rust API, Cloudinary, protected routes, middleware, tests, and deployment shape.
+- The old GitHub UI should be treated as implementation scaffolding only. Do not preserve old GitHub visual styling for convenience.
+- Every route should eventually be visually replaced, including:
+  - `/`
+  - `/articles`
+  - `/articles/[slug]`
+  - `/categories`
+  - `/categories/[slug]`
+  - `/about`
+  - `/login`
+  - `/signup`
+  - `/auth/error`
+  - `/profile`
+  - `/authors/[id]`
+  - `/write`
+  - static policy/guideline pages
+  - all empty/loading/error/unauthorized states
+- Shared visual components should come from or match the Downloads UI:
+  - Navbar
+  - Footer
+  - ArticleCard
+  - AuthorBadge
+  - CategoryPill
+  - ReadingProgress
+  - auth shell
+  - write/editor shell
+  - profile surfaces
+  - buttons, inputs, tabs, pills, cards, modals, and state banners
+- Real production data must remain real. Do not copy mock articles/authors from Downloads into production data paths.
+- If the Downloads UI needs data the current backend does not expose cleanly, first adapt with the least-awkward real data available, then document the backend/API gap for a later UI-contract polish pass.
+- Frontend core behavior must continue to use the Rust API. Do not add browser-to-Supabase table access for articles, comments, profiles, likes, bookmarks, follows, uploads, or moderation.
+- Keep visual parity over incremental local style preferences. If a choice differs from Downloads, document why or avoid the difference.
+
 ## Current Status
 
-Phase 0 and the main frontend/backend migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, migrated article browsing/detail experience, backend article mutation endpoints, public profile/follow-state endpoints, article social-state endpoints, and frontend article/comment/action controls. Articles and public author profiles should be publicly readable, while writing, editing, deleting, commenting, liking, bookmarking, following, profile changes, and moderation require authenticated CSVTu users. The migration is still in progress: write cover-image/edit-flow polish, final browser QA, deployment env confirmation, and production smoke testing remain.
+Phase 0 and the main backend/data migration slices are complete. The project now has the Supabase public schema applied remotely, frontend theme/dark-mode foundations, backend article mutation endpoints, public profile/follow-state endpoints, article social-state endpoints, and frontend article/comment/action controls. Articles and public author profiles should be publicly readable, while writing, editing, deleting, commenting, liking, bookmarking, following, profile changes, and moderation require authenticated CSVTu users.
+
+The frontend migration direction changed from selective UI polish to complete Downloads/Replit parity on 2026-06-06. The app currently contains a mix of migrated Downloads-style surfaces and older GitHub surfaces. Treat that mix as transitional and incomplete.
+
+2026-06-05 update: Implemented editor/admin comment moderation. Added explicit moderator hide/delete API routes, soft-hide schema columns for comments, public comment reads that exclude hidden comments, frontend controls visible only to editor/admin users, and preserved author-only edit/delete for own comments. No approval queue was added.
+
+2026-06-05 update: Completed the first write/edit polish slice. `/write?slug=...` now loads an existing article into the rich editor for authorized authors/editors/admins, article detail controls link into that full editor, and the write form has explicit cover image drag/drop, browse upload, URL paste, preview, replace, and remove UX.
+
+2026-06-05 update: Completed live Supabase comment moderation schema application and verification through the Supabase pooler. Verified `public.comments` has `is_hidden`, `hidden_at`, `hidden_by`, and `idx_comments_visible_article_id`.
+
+2026-06-05 update: Local smoke testing found `.env` and `Render.env` still point `DATABASE_URL` at the legacy Neon host, while the active schema/data target is Supabase Postgres. The running API returns 502 for article list against Neon. Before Render deployment, update Render `DATABASE_URL` to the Supabase Postgres/pooler connection string.
+
+2026-06-05 update: Fixed Rust API startup for Supabase Postgres/pooler deployments. API-owned SQLx migrations are now opt-in via `OPENFORUM_RUN_API_MIGRATIONS=true`, because the Supabase schema is managed externally. Postgres service queries now use non-persistent SQLx statements so Supabase transaction pooler does not fail with prepared statement collisions. Local Supabase-backed API smoke checks now pass for `/health` and `/api/v1/articles?per_page=1`.
+
+2026-06-05 update: Corrected local `.env` and `Render.env` to use the Supabase transaction pooler `DATABASE_URL` with `statement-cache-capacity=0` and `OPENFORUM_RUN_API_MIGRATIONS=false`. Verified the API starts directly from `.env`; `/health` and `/api/v1/articles?per_page=1` return 200.
+
+2026-06-06 update: User confirmed the intended migration target is exact UI parity with the Downloads/Replit OpenForum app and a complete visual replacement of the old GitHub frontend. Future frontend agents should migrate the UI comprehensively, not selectively.
+
+2026-06-06 update: Started the complete UI migration phase. Added/continued Downloads-style tokens, navbar/footer, article cards, author badge, category pills, homepage hierarchy, articles archive, About page, Categories page, public profile/author article grids, and the auth split-screen shell while preserving real API/auth/data behavior.
+
+2026-06-06 update: Started the next route-by-route parity step for `/articles/[slug]`. Added a Downloads-style article detail reader wrapper around the real article detail data, reading progress, social actions, author controls, rendered rich body, comments, moderation, CTA, and related articles.
+
+2026-06-06 update: Continued `/articles/[slug]` nested control parity. Restyled article comments, author comment edit/delete controls, editor/admin hide/delete controls, and article management controls to match the Downloads reader surface while preserving existing API behavior and permissions.
+
+2026-06-06 update: Completed the first `/categories/[slug]` CategoryFeed parity pass. Added a Downloads-style CategoryFeed component with matching header, back link, article grid, and empty/error states while preserving real category/article data from the Rust API.
+
+2026-06-06 update: Continued auth parity. Replaced `/auth/error` with a Downloads-style centered auth error experience, preserving real CSVTu domain messaging and Supabase callback error reasons.
+
+2026-06-06 update: Continued profile parity. Replaced the authenticated `/profile` shell with the Downloads-style profile hero, avatar, stats row, tabbed published/drafts/settings content, and migrated profile edit form while preserving the existing Rust API `/api/v1/users/me` read/update behavior and authored article filtering.
+
+2026-06-06 update: Continued public author parity. Replaced `/authors/[id]` with a Downloads-style public profile hero, avatar, stats row, tabs, author article grid, and sign-in-only drafts empty state. Removed branch/year from the public author UI to preserve the finalized public-profile privacy rule; public stats now use published article count, follower count, read time, and primary category.
+
+2026-06-07 update: Continued `/write` parity. Ported remaining Downloads Write visual cues onto the existing production WriteForm while preserving the advanced Tiptap editor, Cloudinary cover upload, draft autosave/restore, and `/write?slug=...` edit flow: pill-style category select with chevron, `#`-prefixed tag chips, and a sticky bottom stats footer (words / chars vs 10k limit with over-limit warning / read time / last-saved). Skipped adding a separate subtitle/deck field because the production API derives `excerpt` from the body and has no subtitle column; recorded as a UI-contract gap.
+
+2026-06-07 note: Reviewed `/guidelines`, `/privacy`, `/terms`. They render via `components/pages/EditorialInfoPage.tsx`, which is already fully token-based and visually consistent with the migrated Downloads design system (`container-editorial`, `font-heading`, `text-accent`, radial gradient hero, rounded accent closing card). The Downloads reference app has no dedicated policy pages. Left these pages unchanged; the earlier "retire EditorialInfoPage" TODO is stale relative to its current migrated state.
+
+2026-06-07 update: Added the article subtitle/deck as a real first-class field end-to-end (per user request, replacing the earlier "skip subtitle" decision). DB: added `subtitle text NOT NULL DEFAULT ''` to `public.articles` (supabase migration 002 inline + idempotent ALTER, new API migration `0002_add_article_subtitle.sql`) and applied + verified it live via the pooler (`articles.subtitle=True`). Backend: added `subtitle` to `Article`, `NewArticle`, `UpdateArticle`, both Postgres row structs, the detail SELECT, INSERT, and UPDATE (renumbered binds), and the in-memory service. Fallback rule: on create/update, a blank/whitespace subtitle falls back to the article excerpt (the preview) so the detail deck is never empty — enforced in the Rust routes layer and mirrored in the Write UI. Frontend: added `subtitle` to `ArticleDetail`/`ApiArticle`/`mapDetail`, a serif-italic subtitle textarea under the title on `/write` (with draft autosave/restore + edit prefill), and the article detail page renders `subtitle || excerpt` as the deck. Added a backend integration test for explicit-subtitle storage and blank→excerpt fallback. `ArticlePreview`/cards still use `excerpt` only. Note: this is a backend schema/contract change — redeploy the Rust API before the web app relies on the new field in production.
 
 Resolved local blockers:
 - The earlier local CSS/static preview issue was reported as fixed by the user.
@@ -142,32 +229,58 @@ Resolved local blockers:
 
 ## Phase-Wise TODO
 
-### Phase 1: Frontend UI Migration
+### Phase 1: Complete Downloads/Replit Frontend UI Migration
 
-Status: in progress.
+Status: in progress. Re-grounded 2026-06-07 by a full route-by-route audit (`docs/ui-port-audit.md`) into a dependency-ordered slice plan (`docs/ui-port-plan.md`). Execute slices in order, each gated by user review. The earlier "selectively migrated" surfaces below are real but were authored against shadcn tokens that don't resolve in prod yet — Slice 0 (token foundation) fixes that and is the prerequisite for the rest.
 
 Done:
 - Theme/dark-mode foundation.
-- Auth/write/editor token cleanup.
-- Article archive and article detail polish.
+- Downloads-style global color token mapping.
+- Downloads-style Navbar and Footer.
+- Downloads-style ArticleCard, AuthorBadge, and CategoryPill components.
+- Homepage hierarchy migrated toward the Downloads Home page.
+- Article archive migrated toward the Downloads Articles page.
+- Article detail reader shell migrated toward the Downloads ArticleDetail page while retaining real comments, moderation, article actions, and rich article body rendering.
+- Article detail nested comments/actions/management controls partially restyled to match the Downloads reader surface.
+- About page migrated toward the Downloads About page using real article/category data.
+- Categories page migrated toward the Downloads Categories page using real category snapshots.
+- Category detail feed migrated toward the Downloads CategoryFeed page using real category articles.
+- Profile and author article grids now use the Downloads-style article card.
+- Auth shell migrated toward the Downloads split-screen Auth page.
+- Auth error page migrated toward the Downloads AuthError page.
+- Authenticated profile page migrated toward the Downloads Profile page with real profile data, authored article grid, and a settings tab for profile edits.
+- Public author page migrated toward the Downloads Profile page while preserving public-profile privacy limits.
+- Write cover-image drag/drop and `/write?slug=...` edit flow completed while preserving the advanced production Tiptap editor.
+- Write visual shell ported toward the Downloads Write page (pill category select, `#` tag chips, sticky bottom stats footer with over-limit warning) while preserving the production editor, Cloudinary upload, draft autosave/restore, and edit flow.
+- Reviewed `/guidelines`, `/privacy`, `/terms`: already token-based and visually consistent via `EditorialInfoPage`; no change needed (Downloads has no policy pages).
 
 Next:
-- Debug local CSS/static asset loading before continuing UI polish:
-  - Verify `globals.css` is imported and compiled.
-  - Verify `/_next/static/css/*` requests are not being blocked or routed through middleware incorrectly.
-  - Clear/rebuild `.next` if the dev cache is stale.
-  - Confirm the navbar logo has explicit intrinsic dimensions so it cannot dominate the page if utility CSS fails.
-- Finish the home page with the Downloads-style editorial hierarchy while preserving real article data.
-- Polish About, Guidelines, Privacy, and Terms pages with the new visual system.
-- Upgrade login/signup toward the Downloads split-screen editorial design.
-- Continue write page migration:
-  - Cover image drag/drop polish.
-  - Sticky topbar and publish controls.
-  - Subtitle/summary handling if the backend contract supports it.
-  - Writing stats/read-time surface.
-  - Preserve the current advanced Tiptap features.
-- Add or polish profile pages once API/profile contracts are clear.
-- Run a complete mobile and dark-mode visual pass.
+- Continue route-by-route visual replacement from Downloads:
+  - `/articles/[slug]`: perform browser QA and final micro-polish for comments/action/management spacing after comparing against the Downloads reader page.
+  - `/categories/[slug]`: browser QA against the Downloads CategoryFeed page and adjust spacing/card counts if needed.
+  - `/login` and `/signup`: browser QA the split-screen auth screens against Downloads while preserving real Supabase OAuth/email flows.
+  - `/auth/error`: browser QA the migrated Downloads-style auth error state.
+  - `/profile`: browser QA the migrated Downloads-style authenticated profile page; later replace adapted Branch/Year stats with richer backend-provided profile stats if the final UI requires Views/Followers.
+  - `/authors/[id]`: browser QA the migrated Downloads-style public author page and verify follow/sign-in states.
+  - `/write`: browser QA the migrated Write shell (header save/publish, toolbar, cover, bottom stats footer) on desktop/mobile/dark.
+  - `/guidelines`, `/privacy`, `/terms`: visuals already migrated via `EditorialInfoPage`; only browser QA remains.
+- Remove or retire old GitHub-only visual components once no longer referenced:
+  - `components/ui/Card.tsx`
+  - `components/pages/EditorialInfoPage.tsx`
+  - older home/category helper components that duplicate Downloads surfaces.
+- Build a visual parity checklist against `/Users/abhaysinghsisoodiya/Downloads/OpenForum/artifacts/openforum-web/src`.
+- Run desktop/mobile/dark-mode browser QA after each major page group.
+- Do not call the UI migration complete until no old GitHub-styled route remains.
+
+Known backend/API gaps likely needed after visual parity:
+- Homepage-ready aggregate payload: featured/latest/category counts in one request.
+- Category archive counts/metadata in one request instead of per-category fanout.
+- Author/contributor list for the About page.
+- Richer public profile stats matching Downloads profile surfaces.
+- Draft article listing/state for the authenticated profile tabs if drafts become visible outside `/write`.
+- Search/filter/sort endpoints for archive UI.
+- Image variants sized for hero, card, avatar, and detail layouts.
+- Optional view/trending analytics if final UI exposes them.
 
 ### Phase 2: Supabase Database And Data
 
@@ -183,6 +296,7 @@ Next:
 - Keep public read grants limited to published articles and public profile/comment/social read surfaces.
 - Run Supabase database advisors if Supabase CLI or plugin access is available.
 - Confirm final environment variable names for local, Render, and Vercel deployments.
+- Update local `.env` and Render `DATABASE_URL` away from legacy Neon and onto Supabase Postgres/pooler. Completed 2026-06-05. Both include `statement-cache-capacity=0` and `OPENFORUM_RUN_API_MIGRATIONS=false`.
 - Document canonical source of truth for data after migration: Supabase Postgres.
 
 ### Phase 3: Backend API Migration
@@ -206,7 +320,7 @@ Done:
 
 TODO:
 - Review profile fetch/update flow and decide whether Supabase REST remains the best path or direct Postgres is cleaner.
-- Add editor/admin moderation endpoints for hiding/deleting any comment.
+- Add editor/admin moderation endpoints for hiding/deleting any comment. Completed 2026-06-05.
 - Add backend tests for explicit auth domain rejection and RLS-compatible data access.
 
 ### Phase 4: Frontend API Integration
@@ -219,12 +333,13 @@ Done:
 - Article comments UI now reads public comments and posts authenticated comments.
 - Article authors/editors/admins now get inline article edit/delete controls on detail pages.
 - Comment authors now get inline comment edit/delete controls.
+- Editors/admins now get inline comment hide/delete moderation controls.
 
 TODO:
 - Deploy or run the updated Rust API where the web app points, otherwise the new article/comment controls will hit missing endpoints.
 - Connect profile pages to real profile/article/follow data.
 - Verify publish/edit/delete flows from `/write` against the selected backend provider.
-- Decide whether article editing should remain inline on detail pages or move into a full `/write?slug=...` / edit route using the richer editor.
+- Decide whether article editing should remain inline on detail pages or move into a full `/write?slug=...` / edit route using the richer editor. Initial full `/write?slug=...` flow completed 2026-06-05; inline quick edit remains available for now.
 - Improve empty, loading, and error states for all API-backed screens.
 - Ensure unauthenticated, unauthorized, and non-CSVTu-domain users see clear states.
 
@@ -268,21 +383,15 @@ TODO:
 
 ## Remaining Deployment Steps
 
-1. Finish write/edit flow polish:
-   - cover image drag/drop UX.
-   - full article edit route or `/write?slug=...` flow.
-2. Implement editor/admin comment moderation:
-   - hide/delete any comment.
-   - UI controls visible only to editor/admin roles.
-3. Run end-to-end local smoke test:
+1. Run end-to-end local smoke test:
    - login.
    - create article.
    - upload image.
    - publish.
    - like/bookmark/comment/follow.
    - edit/delete article and comment.
-4. Deploy updated Rust API to Render and smoke test new endpoints.
-5. Deploy updated web app to Vercel and run production QA.
+2. Deploy updated Rust API to Render using the corrected Supabase pooler `DATABASE_URL` and smoke test new endpoints.
+3. Deploy updated web app to Vercel and run production QA.
 
 ## Working Rules For Future Agent Work
 

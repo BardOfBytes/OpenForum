@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 use crate::middleware::auth::{AuthUser, OptionalAuthUser, UserRole};
 use crate::models::article::{
-    Article, ArticleListQuery, ArticlePreview, Author, Category, NewArticle,
+    Article, ArticleListQuery, ArticlePreview, Author, AuthorSummary, Category, NewArticle,
 };
 use crate::services::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
 use crate::state::AppState;
@@ -54,6 +54,10 @@ fn can_manage_all_articles(user: &AuthUser) -> bool {
     matches!(user.role, UserRole::Editor | UserRole::Admin)
 }
 
+fn can_moderate_comments(user: &AuthUser) -> bool {
+    matches!(user.role, UserRole::Editor | UserRole::Admin)
+}
+
 async fn list_articles(
     State(state): State<AppState>,
     Query(query): Query<ArticleListQuery>,
@@ -62,16 +66,24 @@ async fn list_articles(
     let per_page = query.per_page();
     let offset = ((page - 1) * per_page) as usize;
     let category = query.category.clone();
+    let search = query.q.clone();
+    let author = query.author;
 
     let (data_result, total_result) = tokio::join!(
+        state.articles.get_posts(
+            per_page as usize,
+            offset,
+            category.as_deref(),
+            search.as_deref(),
+            author,
+        ),
         state
             .articles
-            .get_posts(per_page as usize, offset, category.as_deref()),
-        state.articles.count_posts(category.as_deref())
+            .count_posts(category.as_deref(), search.as_deref(), author)
     );
 
     let data = data_result.map_err(|error| {
-        tracing::error!(error = %error, "Failed to list articles from storage backend");
+        tracing::error!(error = %error, error_chain = ?error, "Failed to list articles from storage backend");
         (
             StatusCode::BAD_GATEWAY,
             Json(ErrorResponse {
@@ -82,7 +94,7 @@ async fn list_articles(
     })?;
 
     let total = total_result.map_err(|error| {
-        tracing::error!(error = %error, "Failed to count articles from storage backend");
+        tracing::error!(error = %error, error_chain = ?error, "Failed to count articles from storage backend");
         (
             StatusCode::BAD_GATEWAY,
             Json(ErrorResponse {
@@ -100,6 +112,77 @@ async fn list_articles(
     }))
 }
 
+async fn list_user_articles(
+    State(state): State<AppState>,
+    Path(author_id): Path<Uuid>,
+    Query(query): Query<ArticleListQuery>,
+) -> Result<Json<PaginatedResponse<ArticlePreview>>, (StatusCode, Json<ErrorResponse>)> {
+    let page = query.page();
+    let per_page = query.per_page();
+    let offset = ((page - 1) * per_page) as usize;
+    let category = query.category.clone();
+    let search = query.q.clone();
+
+    let (data_result, total_result) = tokio::join!(
+        state.articles.get_posts(
+            per_page as usize,
+            offset,
+            category.as_deref(),
+            search.as_deref(),
+            Some(author_id),
+        ),
+        state
+            .articles
+            .count_posts(category.as_deref(), search.as_deref(), Some(author_id))
+    );
+
+    let data = data_result.map_err(|error| {
+        tracing::error!(error = %error, author_id = %author_id, "Failed to list user articles from storage backend");
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "articles_unavailable",
+                message: "Unable to load author articles from storage backend".to_string(),
+            }),
+        )
+    })?;
+
+    let total = total_result.map_err(|error| {
+        tracing::error!(error = %error, author_id = %author_id, "Failed to count user articles from storage backend");
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "articles_unavailable",
+                message: "Unable to load author article metadata from storage backend".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(PaginatedResponse {
+        data,
+        page,
+        per_page,
+        total,
+    }))
+}
+
+async fn list_authors(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<AuthorSummary>>, (StatusCode, Json<ErrorResponse>)> {
+    let authors = state.articles.list_authors(6).await.map_err(|error| {
+        tracing::error!(error = %error, "Failed to list authors from storage backend");
+        (
+            StatusCode::BAD_GATEWAY,
+            Json(ErrorResponse {
+                error: "authors_unavailable",
+                message: "Unable to load contributors from storage backend".to_string(),
+            }),
+        )
+    })?;
+
+    Ok(Json(authors))
+}
+
 async fn update_article(
     State(state): State<AppState>,
     Path(slug): Path<String>,
@@ -109,6 +192,20 @@ async fn update_article(
     let mut patch = payload;
     if let Some(body) = patch.body.as_deref() {
         patch.body = Some(sanitize_article_body(body));
+    }
+
+    // If the author clears the subtitle/deck, fall back to the excerpt so the
+    // detail page never renders an empty deck. Prefer an excerpt sent in the
+    // same patch; otherwise drop the blank subtitle so the existing one is kept.
+    if let Some(subtitle) = patch.subtitle.as_deref() {
+        if subtitle.trim().is_empty() {
+            patch.subtitle = patch
+                .excerpt
+                .as_deref()
+                .map(str::trim)
+                .filter(|excerpt| !excerpt.is_empty())
+                .map(str::to_string);
+        }
     }
 
     let article = state
@@ -443,6 +540,92 @@ async fn delete_comment(
     }
 }
 
+async fn hide_comment_as_moderator(
+    State(state): State<AppState>,
+    Path(comment_id): Path<Uuid>,
+    user: AuthUser,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    if !can_moderate_comments(&user) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "forbidden",
+                message: "Only editors and admins can moderate comments".to_string(),
+            }),
+        ));
+    }
+
+    let hidden = state
+        .articles
+        .hide_comment(comment_id, user.user_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, comment_id = %comment_id, user_id = %user.user_id, "Failed to hide comment");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comment_hide_failed",
+                    message: "Unable to hide comment right now".to_string(),
+                }),
+            )
+        })?;
+
+    if hidden {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Comment not found or already hidden".to_string(),
+            }),
+        ))
+    }
+}
+
+async fn delete_comment_as_moderator(
+    State(state): State<AppState>,
+    Path(comment_id): Path<Uuid>,
+    user: AuthUser,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    if !can_moderate_comments(&user) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "forbidden",
+                message: "Only editors and admins can moderate comments".to_string(),
+            }),
+        ));
+    }
+
+    let deleted = state
+        .articles
+        .delete_comment_as_moderator(comment_id)
+        .await
+        .map_err(|error| {
+            tracing::error!(error = %error, comment_id = %comment_id, user_id = %user.user_id, "Failed to delete comment as moderator");
+            (
+                StatusCode::BAD_GATEWAY,
+                Json(ErrorResponse {
+                    error: "comment_delete_failed",
+                    message: "Unable to delete comment right now".to_string(),
+                }),
+            )
+        })?;
+
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "not_found",
+                message: "Comment not found".to_string(),
+            }),
+        ))
+    }
+}
+
 async fn follow_user(
     State(state): State<AppState>,
     Path(following_id): Path<Uuid>,
@@ -546,8 +729,20 @@ async fn create_article(
         .unwrap_or("Anonymous")
         .to_string();
 
+    // The subtitle/deck is author-written. When left blank, fall back to the
+    // article excerpt (the preview) so the detail page always shows a deck.
+    let subtitle = {
+        let trimmed = payload.subtitle.trim();
+        if trimmed.is_empty() {
+            payload.excerpt.trim().to_string()
+        } else {
+            trimmed.to_string()
+        }
+    };
+
     let sanitized_payload = NewArticle {
         title: payload.title,
+        subtitle,
         body: clean_body,
         excerpt: payload.excerpt,
         content_gdoc_id: payload.content_gdoc_id,
@@ -589,6 +784,11 @@ async fn create_article(
             id: article.author_id,
             name: author_name,
             avatar_url: None,
+            username: None,
+            headline: None,
+            bio: None,
+            articles_published: 0,
+            total_views: 0,
         });
     }
 
@@ -728,6 +928,8 @@ fn category_color_hex(category_name: &str) -> &str {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/articles", get(list_articles).post(create_article))
+        .route("/authors", get(list_authors))
+        .route("/users/{author_id}/articles", get(list_user_articles))
         .route(
             "/articles/{slug}",
             get(get_article)
@@ -750,6 +952,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/comments/{comment_id}",
             axum::routing::put(update_comment).delete(delete_comment),
+        )
+        .route(
+            "/comments/{comment_id}/moderation/hide",
+            post(hide_comment_as_moderator),
+        )
+        .route(
+            "/comments/{comment_id}/moderation",
+            axum::routing::delete(delete_comment_as_moderator),
         )
         .route(
             "/users/{following_id}/follow",

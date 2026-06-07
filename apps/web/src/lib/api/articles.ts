@@ -12,15 +12,26 @@ export interface ArticleListItem {
   excerpt: string;
   coverImageUrl: string | null;
   category: { name: string; color: string };
-  author: { id: string | null; name: string; avatarUrl: string | null };
+  author: {
+    id: string | null;
+    name: string;
+    avatarUrl: string | null;
+    username?: string | null;
+    headline?: string | null;
+    bio?: string | null;
+    articlesPublished?: number;
+    totalViews?: number;
+  };
   readTimeMinutes: number;
   publishedAt: string;
+  views: number;
+  featured: boolean;
 }
 
 export interface ArticleDetail extends ArticleListItem {
+  subtitle: string;
   body: string;
   tags: string[];
-  views: number;
 }
 
 export interface SocialState {
@@ -42,6 +53,11 @@ interface ApiAuthor {
   id: string;
   name: string;
   avatar_url: string | null;
+  username?: string | null;
+  headline?: string | null;
+  bio?: string | null;
+  articles_published?: number;
+  total_views?: number;
 }
 
 interface ApiArticlePreview {
@@ -52,6 +68,8 @@ interface ApiArticlePreview {
   cover_image_url: string | null;
   preview_image_url: string | null;
   created_at: string;
+  views?: number;
+  featured?: boolean;
   category: ApiCategory;
   author: ApiAuthor;
   read_time_minutes: number;
@@ -61,6 +79,7 @@ interface ApiArticle {
   id: string;
   slug: string;
   title: string;
+  subtitle: string;
   excerpt: string;
   body: string;
   tags: string[];
@@ -83,6 +102,8 @@ export interface GetArticlesOptions {
   page?: number;
   perPage?: number;
   category?: string;
+  author?: string;
+  search?: string;
 }
 
 export interface GetArticlesPageResult {
@@ -140,9 +161,16 @@ function mapPreview(article: ApiArticlePreview): ArticleListItem {
       id: article.author.id,
       name: article.author.name,
       avatarUrl: article.author.avatar_url,
+      username: article.author.username ?? null,
+      headline: article.author.headline ?? null,
+      bio: article.author.bio ?? null,
+      articlesPublished: article.author.articles_published ?? 0,
+      totalViews: article.author.total_views ?? 0,
     },
     readTimeMinutes: article.read_time_minutes,
     publishedAt: article.created_at,
+    views: article.views ?? 0,
+    featured: article.featured ?? false,
   };
 }
 
@@ -157,6 +185,12 @@ function buildArticlesPath(options: GetArticlesOptions = {}): string {
   }
   if (options.category) {
     query.set("category", options.category);
+  }
+  if (options.author) {
+    query.set("author", options.author);
+  }
+  if (options.search) {
+    query.set("q", options.search);
   }
 
   return query.size > 0 ? `/api/v1/articles?${query.toString()}` : "/api/v1/articles";
@@ -174,12 +208,19 @@ export function mapDetail(article: ApiArticle): ArticleDetail {
       id: article.author_detail?.id ?? null,
       name: article.author_detail?.name ?? "Unknown Author",
       avatarUrl: article.author_detail?.avatar_url ?? null,
+      username: article.author_detail?.username ?? null,
+      headline: article.author_detail?.headline ?? null,
+      bio: article.author_detail?.bio ?? null,
+      articlesPublished: article.author_detail?.articles_published ?? 0,
+      totalViews: article.author_detail?.total_views ?? 0,
     },
     readTimeMinutes: article.read_time_minutes,
     publishedAt: article.created_at,
+    subtitle: article.subtitle ?? "",
     body: article.body,
     tags: article.tags,
     views: article.views,
+    featured: false,
   };
 }
 

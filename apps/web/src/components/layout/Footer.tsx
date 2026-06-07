@@ -57,20 +57,6 @@ const SOCIAL_LINKS: SocialLink[] = [
       </svg>
     ),
   },
-  // {
-  //   label: "Shinchan Tribute",
-  //   href: ROUTES.shinchan,
-  //   internal: true,
-  //   icon: (
-  //     <Image
-  //       src="/shinchan/Shinchan.png"
-  //       alt="Shinchan"
-  //       width={20}
-  //       height={20}
-  //       className="w-5 h-5 rounded-full"
-  //     />
-  //   ),
-  // },
 ];
 
 const FOOTER_NAV = [
@@ -90,19 +76,18 @@ export function Footer() {
           {/* ── Brand Column ─────────────────────────────── */}
           <div className="md:col-span-5">
             {/* Logo */}
-            <Link href={ROUTES.home} className="inline-flex items-center gap-2 group mb-4">
-              <div
-                className="w-2 h-6 rounded-full bg-accent transition-transform duration-normal group-hover:scale-y-110"
-                aria-hidden="true"
-              />
-              <span className="font-heading font-semibold text-lg tracking-tight text-text">
-                OpenForum
+            <Link href={ROUTES.home} className="mb-4 inline-flex items-center group">
+              <span className="font-serif text-2xl font-bold tracking-tight text-foreground">
+                Open<span className="font-light italic text-primary">Forum</span>
               </span>
             </Link>
 
             <p className="font-body text-sm text-text-secondary leading-relaxed max-w-xs mb-6">
               The student-run editorial and journalism platform for
               Chhattisgarh Swami Vivekanand Technical University.
+            </p>
+            <p className="mb-6 font-serif text-xs italic text-text-tertiary">
+              Only @csvtu.ac.in members may write.
             </p>
 
             {/* Social links */}

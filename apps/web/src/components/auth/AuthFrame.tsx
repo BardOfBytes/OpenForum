@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
+import { CategoryPill } from "@/components/articles/CategoryPill";
 import { CATEGORY_CATALOG } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
@@ -19,93 +22,76 @@ export function AuthFrame({
   footer,
 }: AuthFrameProps) {
   return (
-    <main className="min-h-screen bg-bg text-text lg:grid lg:grid-cols-[1.08fr_0.92fr]">
-      <aside className="relative hidden overflow-hidden border-r border-border bg-bg-elevated p-12 lg:flex lg:flex-col lg:justify-between">
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(circle at 18% 18%, rgba(212,97,60,0.13), transparent 32%), radial-gradient(circle at 82% 72%, rgba(61,124,201,0.1), transparent 34%)",
-          }}
-          aria-hidden="true"
-        />
+    <main className="flex min-h-screen bg-background text-foreground">
+      <aside className="relative hidden flex-1 overflow-hidden border-r border-border bg-card p-12 lg:flex lg:flex-col lg:justify-between">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent" />
 
         <div className="relative z-10">
-          <Link href={ROUTES.home} className="mb-24 inline-flex items-center gap-2.5">
-            <span className="h-8 w-2 rounded-full bg-accent" aria-hidden="true" />
-            <span className="font-heading text-3xl font-bold tracking-tight">
-              Open<span className="font-normal italic text-accent">Forum</span>
+          <Link href={ROUTES.home} className="mb-24 inline-flex items-center">
+            <span className="font-serif text-3xl font-bold tracking-tight text-foreground">
+              Open<span className="font-light italic text-primary">Forum</span>
             </span>
           </Link>
 
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-accent">
-            {eyebrow}
-          </p>
-          <h1 className="max-w-xl font-heading text-6xl font-semibold leading-[1.06] tracking-tight">
-            A sanctuary for <span className="font-normal italic text-accent">deep thought.</span>
+          <h1 className="max-w-xl font-serif text-[4rem] leading-[1.1] text-foreground">
+            A sanctuary for <br />
+            <span className="font-light italic text-primary">deep thought.</span>
           </h1>
-          <p className="mt-5 max-w-md text-base leading-relaxed text-text-secondary">
+          <p className="mt-4 max-w-sm text-muted-foreground">
             {description}
           </p>
         </div>
 
-        <div className="relative z-10 flex flex-wrap gap-3 opacity-75">
+        <div className="relative z-10 flex flex-wrap gap-3 opacity-60">
           {CATEGORY_CATALOG.slice(0, 5).map((category) => (
-            <span
-              key={category.slug}
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-bg/70 px-3 py-1.5 text-xs font-semibold text-text-secondary"
-            >
-              <span
-                className="h-2 w-2 rounded-full"
-                style={{ backgroundColor: category.color }}
-                aria-hidden="true"
-              />
+            <CategoryPill key={category.slug}>
               {category.name}
-            </span>
+            </CategoryPill>
           ))}
         </div>
       </aside>
 
-      <section className="flex min-h-screen items-center justify-center px-5 py-12 sm:px-8">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 text-center lg:text-left">
+      <section className="flex flex-1 flex-col items-center justify-center p-8">
+        <div className="w-full max-w-sm space-y-8">
+          <div className="text-center lg:text-left">
             <Link
               href={ROUTES.home}
-              className="mb-8 inline-flex items-center gap-2 lg:hidden"
+              className="mb-8 inline-flex items-center lg:hidden"
             >
-              <span className="h-7 w-1.5 rounded-full bg-accent" aria-hidden="true" />
-              <span className="font-heading text-2xl font-bold tracking-tight">
-                Open<span className="font-normal italic text-accent">Forum</span>
+              <span className="font-serif text-2xl font-bold tracking-tight text-foreground">
+                Open<span className="font-light italic text-primary">Forum</span>
               </span>
             </Link>
-            <h2 className="mb-2 font-heading text-3xl font-semibold tracking-tight">
+            <p className="mb-2 text-xs font-bold uppercase tracking-widest text-primary">
+              {eyebrow}
+            </p>
+            <h2 className="mb-2 font-serif text-3xl font-medium">
               {title}
             </h2>
-            <p className="text-sm leading-relaxed text-text-secondary">
+            <p className="text-sm text-muted-foreground">
               {description}
             </p>
           </div>
 
           {children}
 
-          <div className="mt-5 flex items-start gap-2.5 rounded-xl border border-border bg-bg-elevated p-4">
-            <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" />
+          <div className="flex items-start gap-2.5 rounded-lg border border-border bg-card p-4">
+            <ShieldCheck className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary" />
             <div>
-              <p className="mb-1 text-xs font-semibold text-text">
+              <p className="mb-1 text-xs font-semibold text-foreground">
                 Institutional access only
               </p>
-              <p className="text-xs leading-relaxed text-text-secondary">
-                Only <code className="rounded bg-surface px-1 font-mono">@csvtu.ac.in</code>{" "}
-                and{" "}
-                <code className="rounded bg-surface px-1 font-mono">
-                  @students.csvtu.ac.in
-                </code>{" "}
-                accounts can publish or interact.
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Faculty and staff use{" "}
+                <code className="rounded bg-muted px-1 font-mono">@csvtu.ac.in</code>; students
+                use{" "}
+                <code className="rounded bg-muted px-1 font-mono">@students.csvtu.ac.in</code>.
+                These accounts can publish, comment, save, and react.
               </p>
             </div>
           </div>
 
-          <div className="mt-6 text-center text-sm text-text-secondary">
+          <div className="text-center text-xs text-muted-foreground">
             {footer}
           </div>
         </div>

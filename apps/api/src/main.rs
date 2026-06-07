@@ -12,6 +12,8 @@ use openforum_api::{
     },
     state::AppState,
 };
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+use std::str::FromStr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
@@ -37,16 +39,27 @@ async fn main() -> anyhow::Result<()> {
     let cache = CacheService::new(config.redis_url.clone(), config.redis_token.clone())
         .context("Failed to initialize Redis cache service")?;
 
-    let pool = sqlx::postgres::PgPoolOptions::new()
+    let mut connect_options = PgConnectOptions::from_str(&config.database_url)
+        .context("Failed to parse Postgres DATABASE_URL")?;
+
+    if config.database_url.contains("pooler.supabase.com") {
+        connect_options = connect_options.statement_cache_capacity(0);
+    }
+
+    let pool = PgPoolOptions::new()
         .max_connections(5)
-        .connect(&config.database_url)
+        .connect_with(connect_options)
         .await
         .context("Failed to connect to Postgres")?;
 
-    sqlx::migrate!()
-        .run(&pool)
-        .await
-        .context("Failed to run Postgres migrations")?;
+    if config.run_api_migrations {
+        sqlx::migrate!()
+            .run(&pool)
+            .await
+            .context("Failed to run Postgres migrations")?;
+    } else {
+        tracing::info!("Skipping API-owned SQL migrations; schema is managed externally");
+    }
 
     let articles = ArticlesService::postgres(PostgresArticlesService::new(pool, cache.clone()));
 

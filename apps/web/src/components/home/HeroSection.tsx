@@ -55,7 +55,7 @@ const underlineVariants = {
 export function HeroSection() {
   return (
     <section
-      className="relative flex min-h-[calc(100svh-4rem)] items-center justify-center overflow-hidden"
+      className="relative flex items-center justify-center overflow-hidden"
       aria-label="Hero"
     >
       <div
@@ -63,17 +63,8 @@ export function HeroSection() {
         aria-hidden="true"
         style={{
           background:
-            "radial-gradient(ellipse 80% 55% at 50% 35%, rgba(212,97,60,0.09) 0%, transparent 72%)",
+            "radial-gradient(ellipse 70% 50% at 50% 40%, rgba(212,97,60,0.06) 0%, transparent 70%)",
         }}
-      />
-
-      <div
-        className="absolute right-[10%] top-20 -z-10 hidden h-48 w-48 rounded-full border-2 border-accent opacity-[0.04] md:block"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute bottom-1/4 left-[8%] top-1/4 -z-10 hidden w-px bg-border lg:block"
-        aria-hidden="true"
       />
 
       <motion.div
@@ -90,13 +81,13 @@ export function HeroSection() {
           Latest Issue
         </motion.div>
 
-        <h1 className="mb-6 font-heading text-5xl font-semibold leading-[1.05] tracking-tight text-text text-balance md:text-7xl lg:text-[6rem]">
+        <h1 className="mb-6 font-heading text-5xl font-normal leading-[1.1] tracking-tight text-text text-balance md:text-7xl lg:text-[6rem]">
           <motion.span variants={itemVariants} className="inline">
             Ideas that shape our{" "}
           </motion.span>
           <motion.span
             variants={itemVariants}
-            className="relative inline-block font-normal italic text-accent"
+            className="relative inline-block font-light italic text-accent"
           >
             tomorrow.
             <motion.span

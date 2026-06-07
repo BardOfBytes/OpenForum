@@ -19,6 +19,30 @@ const config: Config = {
     extend: {
       /* ── Color Palette ─────────────────────────────────── */
       colors: {
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
         bg: {
           DEFAULT: "var(--color-bg)",
           elevated: "var(--color-bg-elevated)",
@@ -42,6 +66,7 @@ const config: Config = {
           hover: "var(--color-accent-hover)",
           light: "var(--color-accent-light)",
           subtle: "var(--color-accent-subtle)",
+          foreground: "hsl(var(--accent-foreground))",
         },
         success: "var(--color-success)",
         warning: "var(--color-warning)",
@@ -52,6 +77,7 @@ const config: Config = {
       fontFamily: {
         body: ["var(--font-dm-sans)", "DM Sans", "system-ui", "sans-serif"],
         heading: ["var(--font-fraunces)", "Fraunces", "Georgia", "serif"],
+        serif: ["var(--font-fraunces)", "Fraunces", "Georgia", "serif"],
         mono: ["JetBrains Mono", "Fira Code", "monospace"],
       },
       fontSize: {

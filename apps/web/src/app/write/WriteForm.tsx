@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, FileText, Loader2, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, Check, FileText, ImagePlus, Loader2, UploadCloud, X } from "lucide-react";
 import DOMPurify from "dompurify";
 import ArticleEditor from "@/components/editor/ArticleEditor";
 import { Button } from "@/components/ui/Button";
 import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
+import type { ArticleDetail } from "@/lib/api/articles";
 import { CATEGORY_CATALOG } from "@/lib/categories";
 import { ROUTES } from "@/lib/routes";
 
@@ -26,6 +27,7 @@ const ALLOWED_YOUTUBE_EMBED_HOSTS = new Set([
 interface StoredDraft {
   draftId: string;
   title: string;
+  subtitle: string;
   body: string;
   tags: string[];
   category: string;
@@ -35,6 +37,17 @@ interface StoredDraft {
 
 interface RestoreDraft extends StoredDraft {
   storageKey: string;
+}
+
+interface UploadResponse {
+  public_url?: string;
+  message?: string;
+  error?: string;
+}
+
+interface WriteFormProps {
+  sessionToken: string;
+  initialArticle?: ArticleDetail | null;
 }
 
 function stripHtmlToText(html: string): string {
@@ -224,6 +237,15 @@ function extractFirstImageUrl(html: string): string | null {
   return null;
 }
 
+function isSafeHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function createDraftId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -272,6 +294,7 @@ function parseStoredDraft(raw: string | null, storageKey: string): RestoreDraft 
     return {
       draftId: parsed.draftId,
       title: parsed.title ?? "",
+      subtitle: parsed.subtitle ?? "",
       body: parsed.body,
       tags: Array.isArray(parsed.tags) ? parsed.tags.filter(Boolean).slice(0, 5) : [],
       category:
@@ -298,6 +321,9 @@ function findLatestDraftInStorage(): RestoreDraft | null {
 
     const parsed = parseStoredDraft(localStorage.getItem(key), key);
     if (parsed) {
+      if (parsed.draftId.startsWith("edit-")) {
+        continue;
+      }
       drafts.push(parsed);
     }
   }
@@ -311,22 +337,32 @@ function findLatestDraftInStorage(): RestoreDraft | null {
   return drafts[0] ?? null;
 }
 
-export default function WriteForm({ sessionToken }: { sessionToken: string }) {
+export default function WriteForm({ sessionToken, initialArticle = null }: WriteFormProps) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [title, setTitle] = useState("");
-  const [contentHtml, setContentHtml] = useState("");
-  const [category, setCategory] = useState("Campus News");
+  const [title, setTitle] = useState(initialArticle?.title ?? "");
+  const [subtitle, setSubtitle] = useState(initialArticle?.subtitle ?? "");
+  const [contentHtml, setContentHtml] = useState(initialArticle?.body ?? "");
+  const [category, setCategory] = useState(initialArticle?.category.name ?? "Campus News");
   const [tagInput, setTagInput] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>(initialArticle?.tags ?? []);
+  const [coverImageUrl, setCoverImageUrl] = useState(initialArticle?.coverImageUrl ?? "");
+  const [coverDragActive, setCoverDragActive] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [initialContent, setInitialContent] = useState("");
+  const [initialContent, setInitialContent] = useState(initialArticle?.body ?? "");
   const [editorRenderKey, setEditorRenderKey] = useState(0);
-  const [draftId, setDraftId] = useState("");
+  const [draftId, setDraftId] = useState(initialArticle ? `edit-${initialArticle.slug}` : "");
   const [draftSavedAt, setDraftSavedAt] = useState("");
   const [restoreDraftToast, setRestoreDraftToast] = useState<RestoreDraft | null>(null);
 
   useEffect(() => {
+    if (initialArticle) {
+      setDraftId(`edit-${initialArticle.slug}`);
+      return;
+    }
+
     const latestDraft = findLatestDraftInStorage();
 
     if (latestDraft) {
@@ -345,6 +381,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       setRestoreDraftToast({
         draftId: legacyDraftId,
         title: "",
+        subtitle: "",
         body: legacyBody,
         tags: [],
         category: "Campus News",
@@ -356,7 +393,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     }
 
     setDraftId(createDraftId());
-  }, []);
+  }, [initialArticle]);
 
   useEffect(() => {
     if (!draftId || isSubmitting) {
@@ -367,6 +404,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       const excerpt = buildExcerptFromHtml(contentHtml);
       const shouldSaveDraft =
         title.trim().length > 0 ||
+        subtitle.trim().length > 0 ||
         !isEditorContentEmpty(contentHtml) ||
         tags.length > 0 ||
         excerpt.length > 0;
@@ -378,6 +416,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       const payload: StoredDraft = {
         draftId,
         title: title.trim(),
+        subtitle: subtitle.trim(),
         body: contentHtml,
         tags,
         category,
@@ -390,7 +429,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [draftId, isSubmitting, title, contentHtml, tags, category]);
+  }, [draftId, isSubmitting, title, subtitle, contentHtml, tags, category]);
 
   const { wordCount, characterCount, readTimeMinutes } = useMemo(() => {
     const plainText = getPlainTextFromHtml(contentHtml);
@@ -410,6 +449,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     }
 
     setTitle(restoreDraftToast.title);
+    setSubtitle(restoreDraftToast.subtitle);
     setCategory(
       CATEGORIES.includes(restoreDraftToast.category)
         ? restoreDraftToast.category
@@ -426,6 +466,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       const migratedDraft: StoredDraft = {
         draftId: restoreDraftToast.draftId,
         title: restoreDraftToast.title,
+        subtitle: restoreDraftToast.subtitle,
         body: restoreDraftToast.body,
         tags: restoreDraftToast.tags,
         category: restoreDraftToast.category,
@@ -480,6 +521,74 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
     }
   }
 
+  async function uploadCoverFile(file: File) {
+    if (!file.type.startsWith("image/")) {
+      alert("Please choose an image file.");
+      return;
+    }
+
+    setCoverUploading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(apiUrl("/api/v1/upload"), {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: formData,
+      });
+
+      const body = await parseJsonSafe<UploadResponse>(response);
+
+      if (response.status === 401) {
+        throw new Error("Session expired. Please refresh and sign in again.");
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          body?.message ?? body?.error ?? `Cover upload failed (HTTP ${response.status}).`
+        );
+      }
+
+      if (!body?.public_url || !isSafeHttpUrl(body.public_url)) {
+        throw new Error("Upload succeeded but no valid image URL was returned.");
+      }
+
+      setCoverImageUrl(body.public_url);
+    } catch (err: unknown) {
+      console.error(err);
+      const message =
+        err instanceof ApiBaseUrlConfigurationError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Cover upload failed.";
+      alert(message);
+    } finally {
+      setCoverUploading(false);
+      setCoverDragActive(false);
+    }
+  }
+
+  function handleCoverInputChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const [file] = Array.from(event.target.files ?? []);
+    if (file) {
+      void uploadCoverFile(file);
+    }
+    event.target.value = "";
+  }
+
+  function handleCoverDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const [file] = Array.from(event.dataTransfer.files ?? []);
+    if (file) {
+      void uploadCoverFile(file);
+    }
+  }
+
   const handleSubmit = async () => {
     const sanitizedBody = sanitizeArticleBody(contentHtml);
 
@@ -492,20 +601,26 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
 
     try {
       const excerpt = buildExcerptFromHtml(sanitizedBody);
-      const coverImageUrl = extractFirstImageUrl(sanitizedBody);
+      const nextCoverImageUrl = coverImageUrl.trim() || extractFirstImageUrl(sanitizedBody);
+      // Subtitle/deck is optional; when blank it falls back to the excerpt.
+      const nextSubtitle = subtitle.trim() || excerpt;
 
       const payload = {
         title: title.trim(),
+        subtitle: nextSubtitle,
         body: sanitizedBody,
         excerpt,
         content_gdoc_id: null,
-        cover_image_url: coverImageUrl,
+        cover_image_url: nextCoverImageUrl,
         category_name: category,
         tags,
       };
 
-      const res = await fetch(apiUrl("/api/v1/articles"), {
-        method: "POST",
+      const endpoint = initialArticle
+        ? `/api/v1/articles/${initialArticle.slug}`
+        : "/api/v1/articles";
+      const res = await fetch(apiUrl(endpoint), {
+        method: initialArticle ? "PATCH" : "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${sessionToken}`,
@@ -525,7 +640,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
         throw new Error(
           body?.message ??
             body?.error ??
-            `Failed to submit article (HTTP ${res.status})`
+            `Failed to ${initialArticle ? "update" : "submit"} article (HTTP ${res.status})`
         );
       }
 
@@ -573,9 +688,11 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
                 OpenForum Studio
               </p>
               <p className="truncate text-xs text-text-secondary">
-                {draftSavedAt
+                {initialArticle
+                  ? `Editing ${initialArticle.slug}`
+                  : draftSavedAt
                   ? `Draft saved ${formatDraftTime(draftSavedAt)}`
-                  : "Draft autosaves every 30 seconds"}
+                    : "Draft autosaves every 30 seconds"}
               </p>
             </div>
           </div>
@@ -590,10 +707,11 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Publishing
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {initialArticle ? "Saving" : "Publishing"}
                 </>
               ) : (
-                "Publish"
+                initialArticle ? "Save" : "Publish"
               )}
             </Button>
           </div>
@@ -605,7 +723,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
       <div className="mb-8 space-y-6">
         <div className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-accent">
           <FileText className="h-3.5 w-3.5" />
-          New article
+          {initialArticle ? "Edit article" : "New article"}
         </div>
 
         <textarea
@@ -616,18 +734,31 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           rows={2}
         />
 
+        <textarea
+          value={subtitle}
+          onChange={(e) => setSubtitle(e.target.value)}
+          placeholder="Add a subtitle or deck (optional — defaults to the preview)..."
+          className="w-full resize-none bg-transparent font-heading text-xl italic leading-relaxed text-text-secondary outline-none placeholder:text-text-tertiary md:text-2xl"
+          rows={2}
+        />
+
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="rounded-full border border-border bg-bg px-4 py-2 font-medium text-text outline-none focus:ring-2 focus:ring-accent/30"
-          >
-            {CATEGORIES.map((cat) => (
-              <option key={cat} value={cat}>
-                {cat}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="appearance-none rounded-full border border-accent/20 bg-accent/10 pl-4 pr-9 py-2 text-xs font-bold uppercase tracking-[0.18em] text-accent outline-none focus:border-accent/60"
+            >
+              {CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat}
+                </option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-accent">
+              ▾
+            </span>
+          </div>
 
           <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
             {tags.map((t) => (
@@ -635,7 +766,7 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
                 key={t}
                 className="flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-sm text-text"
               >
-                {t}
+                #{t}
                 <button
                   onClick={() => removeTag(t)}
                   className="text-text-tertiary transition-colors hover:text-accent"
@@ -656,6 +787,107 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
             )}
           </div>
         </div>
+
+        <div
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setCoverDragActive(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setCoverDragActive(true);
+          }}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setCoverDragActive(false);
+          }}
+          onDrop={handleCoverDrop}
+          className={`overflow-hidden rounded-lg border border-dashed transition-colors ${
+            coverDragActive
+              ? "border-accent bg-accent/10"
+              : "border-border bg-bg-elevated"
+          }`}
+        >
+          {coverImageUrl ? (
+            <div className="grid gap-0 md:grid-cols-[1fr_280px]">
+              <div className="aspect-[16/7] bg-surface">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverImageUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="flex flex-col justify-between gap-4 border-t border-border-light p-4 md:border-l md:border-t-0">
+                <div>
+                  <p className="text-sm font-semibold text-text">Cover image</p>
+                  <p className="mt-1 break-all text-xs text-text-tertiary">{coverImageUrl}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={coverUploading}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {coverUploading ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <UploadCloud className="h-3.5 w-3.5" />
+                    )}
+                    Replace
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCoverImageUrl("")}
+                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-surface hover:text-text"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={coverUploading}
+              className="flex w-full flex-col items-center justify-center gap-3 px-6 py-10 text-center transition-colors disabled:cursor-wait disabled:opacity-70"
+            >
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface text-accent">
+                {coverUploading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <ImagePlus className="h-5 w-5" />
+                )}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold text-text">
+                  Drop a cover image here or browse
+                </span>
+                <span className="mt-1 block text-xs text-text-tertiary">
+                  JPG, PNG, or WEBP. This becomes the article card image.
+                </span>
+              </span>
+            </button>
+          )}
+          <div className="border-t border-border-light bg-bg px-4 py-3">
+            <input
+              value={coverImageUrl}
+              onChange={(event) => setCoverImageUrl(event.target.value)}
+              placeholder="Paste an image URL, or upload one above"
+              className="w-full bg-transparent text-xs text-text outline-none placeholder:text-text-tertiary"
+            />
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleCoverInputChange}
+            className="hidden"
+          />
+        </div>
       </div>
 
       {/* Tiptap Editor */}
@@ -667,19 +899,6 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
           onChange={setContentHtml}
           autosaveEnabled={false}
         />
-
-        <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-border-light bg-surface px-4 py-2 text-xs text-text-secondary">
-          <span>{wordCount} words</span>
-          <span>
-            {characterCount} / {MAX_CHARACTERS} characters
-          </span>
-          <span>{readTimeMinutes} min read</span>
-          <span className="ml-auto">
-            {draftSavedAt
-              ? `Draft saved at ${formatDraftTime(draftSavedAt)}`
-              : "Draft not saved yet"}
-          </span>
-        </div>
       </div>
 
       {/* Action Area */}
@@ -693,14 +912,48 @@ export default function WriteForm({ sessionToken }: { sessionToken: string }) {
         >
           {isSubmitting ? (
             <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Publishing...
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              {initialArticle ? "Saving..." : "Publishing..."}
             </>
           ) : (
-            "Publish Article"
+            initialArticle ? "Save Article" : "Publish Article"
           )}
         </Button>
       </div>
       </main>
+
+      <footer className="sticky bottom-0 z-30 border-t border-border bg-bg/95 py-2 backdrop-blur-md">
+        <div className="container-editorial flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-text-secondary">
+          <div className="flex items-center gap-4">
+            <span>
+              <strong className="text-text">{wordCount.toLocaleString()}</strong> words
+            </span>
+            <span
+              className={`flex items-center gap-1 ${
+                characterCount > MAX_CHARACTERS ? "text-error" : ""
+              }`}
+            >
+              {characterCount > MAX_CHARACTERS && <AlertCircle className="h-3 w-3" />}
+              <strong
+                className={characterCount > MAX_CHARACTERS ? "text-error" : "text-text"}
+              >
+                {characterCount.toLocaleString()}
+              </strong>
+              <span>/ {MAX_CHARACTERS.toLocaleString()} chars</span>
+            </span>
+            <span>~{readTimeMinutes || 1} min read</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="hidden uppercase tracking-[0.18em] sm:block">Rich Text</span>
+            {draftSavedAt && (
+              <span className="flex items-center gap-1">
+                <Check className="h-3 w-3 text-accent" />
+                {formatDraftTime(draftSavedAt)}
+              </span>
+            )}
+          </div>
+        </div>
+      </footer>
 
       {restoreDraftToast && (
         <div className="fixed bottom-6 right-6 z-[60] w-[min(92vw,380px)] rounded-xl border border-border bg-bg-elevated p-4 shadow-lg">

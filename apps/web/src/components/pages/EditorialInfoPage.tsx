@@ -40,13 +40,13 @@ export function EditorialInfoPage({
           aria-hidden="true"
         />
         <div className="container-editorial py-16 md:py-24">
-          <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-accent">
+          <p className="mb-4 text-xs font-bold uppercase tracking-[0.3em] text-primary">
             {eyebrow}
           </p>
-          <h1 className="max-w-4xl font-heading text-4xl font-semibold leading-tight tracking-tight text-text md:text-6xl">
+          <h1 className="max-w-4xl font-serif text-4xl font-medium leading-tight tracking-tight text-foreground md:text-6xl">
             {title}
           </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-text-secondary">
+          <p className="mt-6 max-w-2xl text-lg leading-relaxed text-muted-foreground">
             {description}
           </p>
 
@@ -69,7 +69,7 @@ export function EditorialInfoPage({
 
       <section className="container-editorial grid gap-8 py-14 md:grid-cols-[0.72fr_1.28fr] md:py-20">
         <div>
-          <p className="sticky top-24 text-xs font-bold uppercase tracking-[0.3em] text-text-tertiary">
+          <p className="sticky top-24 text-xs font-bold uppercase tracking-[0.3em] text-muted-foreground">
             Working standard
           </p>
         </div>
@@ -77,14 +77,14 @@ export function EditorialInfoPage({
         <div className="divide-y divide-border border-y border-border">
           {sections.map((section, index) => (
             <article key={section.title} className="grid gap-4 py-8 md:grid-cols-[120px_1fr]">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-accent">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">
                 {section.kicker ?? `0${index + 1}`}
               </div>
               <div>
-                <h2 className="font-heading text-2xl font-semibold tracking-tight text-text">
+                <h2 className="font-serif text-2xl font-medium tracking-tight text-foreground">
                   {section.title}
                 </h2>
-                <p className="mt-3 max-w-2xl text-base leading-relaxed text-text-secondary">
+                <p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground">
                   {section.body}
                 </p>
               </div>
@@ -94,11 +94,11 @@ export function EditorialInfoPage({
       </section>
 
       <section className="container-editorial">
-        <div className="rounded-2xl border border-accent/15 bg-accent/5 px-8 py-10 md:px-12">
-          <h2 className="max-w-2xl font-heading text-3xl font-semibold tracking-tight text-text md:text-4xl">
+        <div className="rounded-2xl border border-primary/15 bg-primary/5 px-8 py-10 md:px-12">
+          <h2 className="max-w-2xl font-serif text-3xl font-medium tracking-tight text-foreground md:text-4xl">
             {closing.title}
           </h2>
-          <p className="mt-4 max-w-2xl text-base leading-relaxed text-text-secondary">
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted-foreground">
             {closing.body}
           </p>
           {(closing.primaryAction || closing.secondaryAction) && (
@@ -136,8 +136,8 @@ function InfoLink({
       className={[
         "inline-flex items-center rounded-full px-5 py-2.5 text-sm font-semibold transition-colors",
         variant === "primary"
-          ? "bg-accent text-text-inverse hover:bg-accent-hover"
-          : "border border-border bg-bg text-text hover:bg-surface",
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border border-border bg-card text-foreground hover:bg-muted",
       ].join(" ")}
     >
       {children}

@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import Link from "next/link";
 import { ArrowRight, PenSquare } from "lucide-react";
-import { ArticleCard } from "@/components/ui/Card";
-import { FeaturedArticle } from "@/components/home/FeaturedArticle";
+import { ArticleCard } from "@/components/articles/ArticleCard";
+import { AuthorBadge } from "@/components/articles/AuthorBadge";
+import { CategoryPill } from "@/components/articles/CategoryPill";
 import { CATEGORY_CATALOG } from "@/lib/categories";
 import type { ArticleListItem } from "@/lib/api/articles";
 import { ROUTES } from "@/lib/routes";
@@ -15,64 +15,71 @@ interface HomeFeedProps {
   errorMessage: string | null;
 }
 
-const EASE: [number, number, number, number] = [0.16, 1, 0.3, 1];
-
 export function HomeFeed({ articles, errorMessage }: HomeFeedProps) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const featured = articles[0] ?? null;
+  const nonFeatured = featured
+    ? articles.filter((article) => article.slug !== featured.slug)
+    : articles;
+  const rightArticles = nonFeatured.slice(0, 2);
+  const belowFeaturedArticle = nonFeatured[2] ?? null;
 
   const filteredArticles = useMemo(() => {
-    const pool = featured
-      ? articles.filter((article) => article.slug !== featured.slug)
-      : articles;
-
     if (!activeCategory) {
-      return pool.slice(0, 6);
+      return nonFeatured.slice(0, 6);
     }
 
-    return pool
+    return nonFeatured
       .filter((article) => article.category.name === activeCategory)
       .slice(0, 6);
-  }, [activeCategory, articles, featured]);
+  }, [activeCategory, nonFeatured]);
 
   return (
     <>
-      <section className="border-y border-border bg-bg-elevated/70 py-4">
-        <div className="container-editorial overflow-x-auto scrollbar-hide">
+      <section className="mb-16 border-y border-border bg-card/50 py-4">
+        <div className="container mx-auto max-w-6xl overflow-x-auto px-4 no-scrollbar">
           <div className="flex w-max items-center gap-3">
-            <CategoryFilterButton
+            <CategoryPill
               active={activeCategory === null}
               onClick={() => setActiveCategory(null)}
-              label="All Topics"
-            />
+            >
+              All Topics
+            </CategoryPill>
             {CATEGORY_CATALOG.map((category) => (
-              <CategoryFilterButton
+              <CategoryPill
                 key={category.slug}
                 active={activeCategory === category.name}
-                accent={category.color}
                 onClick={() =>
                   setActiveCategory((current) =>
                     current === category.name ? null : category.name
                   )
                 }
-                label={category.name}
-              />
+              >
+                {category.name}
+              </CategoryPill>
             ))}
           </div>
         </div>
       </section>
 
       {!activeCategory && (
-        <section className="container-editorial py-16 md:py-24" aria-label="Featured article">
-          <div className="mb-10 flex items-center gap-4">
-            <span className="text-xs font-semibold uppercase tracking-[0.28em] text-accent">
-              Featured
-            </span>
-            <div className="h-px flex-1 bg-border" aria-hidden="true" />
-          </div>
-
+        <section className="container mx-auto mb-24 max-w-6xl px-4 md:px-8" aria-label="Featured article">
           {featured ? (
-            <FeaturedArticle article={featured} />
+            <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-3">
+              <div className="flex flex-col gap-6 lg:col-span-2">
+                <FeaturedStoryCard article={featured} />
+                {belowFeaturedArticle ? (
+                  <ArticleCard article={belowFeaturedArticle} index={2} />
+                ) : null}
+              </div>
+              {rightArticles.length > 0 ? (
+                <div className="flex flex-col gap-6">
+                  {rightArticles.map((article, index) => (
+                    <ArticleCard key={article.slug} article={article} index={index} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
           ) : (
             <EmptyHomeState
               message={errorMessage ?? "No featured story yet."}
@@ -82,20 +89,17 @@ export function HomeFeed({ articles, errorMessage }: HomeFeedProps) {
         </section>
       )}
 
-      <section className="container-editorial pb-20 md:pb-28" aria-label="Latest articles">
+      <section className="container mx-auto max-w-6xl px-4 pb-12 md:px-8 md:pb-16" aria-label="Latest articles">
         <div className="mb-8 flex items-end justify-between border-b border-border pb-4">
           <div>
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-text-tertiary">
-              {activeCategory ? "Filtered desk" : "Fresh off the press"}
-            </span>
-            <h2 className="font-heading text-2xl font-semibold tracking-tight text-text md:text-3xl">
+            <h2 className="font-serif text-2xl font-medium text-foreground">
               {activeCategory ?? "Latest Pieces"}
             </h2>
           </div>
           {!activeCategory && (
             <Link
               href={ROUTES.articles}
-              className="hidden items-center gap-1.5 text-sm font-semibold text-accent transition-colors hover:text-accent-hover sm:inline-flex"
+              className="hidden items-center gap-1 text-sm font-medium text-primary hover:underline sm:inline-flex"
             >
               View all
               <ArrowRight className="h-4 w-4" />
@@ -104,29 +108,11 @@ export function HomeFeed({ articles, errorMessage }: HomeFeedProps) {
         </div>
 
         {filteredArticles.length > 0 ? (
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: "-60px" }}
-            variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
-            className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
-          >
-            {filteredArticles.map((article) => (
-              <motion.div
-                key={article.slug}
-                variants={{
-                  hidden: { opacity: 0, y: 18 },
-                  visible: {
-                    opacity: 1,
-                    y: 0,
-                    transition: { duration: 0.55, ease: EASE },
-                  },
-                }}
-              >
-                <ArticleCard {...article} />
-              </motion.div>
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {filteredArticles.map((article, index) => (
+              <ArticleCard key={article.slug} article={article} index={index} />
             ))}
-          </motion.div>
+          </div>
         ) : (
           <EmptyHomeState
             message={
@@ -141,7 +127,7 @@ export function HomeFeed({ articles, errorMessage }: HomeFeedProps) {
         <div className="mt-8 text-center sm:hidden">
           <Link
             href={ROUTES.articles}
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
           >
             View all articles
             <ArrowRight className="h-4 w-4" />
@@ -152,36 +138,77 @@ export function HomeFeed({ articles, errorMessage }: HomeFeedProps) {
   );
 }
 
-function CategoryFilterButton({
-  active,
-  accent = "var(--color-accent)",
-  label,
-  onClick,
-}: {
-  active: boolean;
-  accent?: string;
-  label: string;
-  onClick: () => void;
-}) {
+function FeaturedStoryCard({ article }: { article: ArticleListItem }) {
+  const readTime = `${article.readTimeMinutes || 1} min read`;
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold transition-all",
-        active
-          ? "border-transparent bg-text text-text-inverse shadow-sm"
-          : "border-border bg-bg text-text-secondary hover:border-text-tertiary hover:text-text",
-      ].join(" ")}
+    <Link
+      href={ROUTES.article.detail(article.slug)}
+      className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      aria-label={`Read featured story: ${article.title}`}
     >
-      <span
-        className="h-2 w-2 rounded-full"
-        style={{ backgroundColor: active ? "currentColor" : accent }}
-        aria-hidden="true"
-      />
-      {label}
-    </button>
+      <article className="relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:border-primary/50">
+        {article.coverImageUrl ? (
+          <div className="h-72 flex-shrink-0 overflow-hidden bg-muted">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={article.coverImageUrl}
+              alt=""
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="eager"
+            />
+          </div>
+        ) : (
+          <div
+            className="h-2 flex-shrink-0 bg-gradient-to-r from-primary/60 via-primary/30 to-transparent"
+            style={{
+              background: `linear-gradient(90deg, ${article.category.color} 0%, ${article.category.color}66 55%, transparent 100%)`,
+            }}
+          />
+        )}
+
+        <div className="flex flex-col bg-card p-8 md:p-10">
+          <span className="mb-3 block text-xs font-bold uppercase tracking-widest text-primary">
+            {article.category.name}
+          </span>
+          <h2 className="mb-3 font-serif text-2xl font-medium leading-tight text-foreground transition-colors group-hover:text-primary md:text-4xl">
+            {article.title}
+          </h2>
+          <p className="mb-6 max-w-xl text-muted-foreground">
+            {article.excerpt}
+          </p>
+          <AuthorBadge
+            name={article.author.name}
+            avatarFallback={initials(article.author.name) || "OF"}
+            avatarUrl={article.author.avatarUrl}
+            date={formattedDate(article.publishedAt)}
+            readTime={readTime}
+          />
+        </div>
+      </article>
+    </Link>
   );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+}
+
+function formattedDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-IN", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    }).format(new Date(iso));
+  } catch {
+    return iso;
+  }
 }
 
 function EmptyHomeState({
@@ -192,13 +219,13 @@ function EmptyHomeState({
   action: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border bg-bg-elevated px-8 py-14 text-center">
-      <p className="mx-auto mb-6 max-w-md text-sm leading-relaxed text-text-secondary">
+    <div className="rounded-2xl border border-border bg-card px-8 py-14 text-center">
+      <p className="mx-auto mb-6 max-w-md text-sm leading-relaxed text-muted-foreground">
         {message}
       </p>
       <Link
         href={ROUTES.write}
-        className="inline-flex items-center gap-2 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-text-inverse transition-colors hover:bg-accent-hover"
+        className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
       >
         <PenSquare className="h-4 w-4" />
         {action}

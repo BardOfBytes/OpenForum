@@ -17,11 +17,11 @@ export function CategoryPill({
     <button
       type="button"
       className={[
-        "whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors duration-fast",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+        "whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-all duration-200",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         active
-          ? "border border-accent bg-accent text-text-inverse shadow-sm"
-          : "border border-border bg-transparent text-text-secondary hover:bg-surface hover:text-text",
+          ? "bg-primary text-primary-foreground shadow-sm"
+          : "border border-border bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground",
         className,
       ].join(" ")}
       {...props}

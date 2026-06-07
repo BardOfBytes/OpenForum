@@ -114,11 +114,11 @@ function LoginForm() {
       footer={
         <>
           No account yet?{" "}
-          <Link href={signupUrl} className="font-semibold text-text underline hover:text-accent">
+          <Link href={signupUrl} className="font-medium text-primary hover:underline">
             Create one
           </Link>
-          <span className="mx-2 text-text-tertiary">/</span>
-          <Link href={ROUTES.articles} className="font-semibold text-text underline hover:text-accent">
+          <span className="mx-2 text-muted-foreground">/</span>
+          <Link href={ROUTES.articles} className="font-medium text-primary hover:underline">
             Browse as guest
           </Link>
         </>
@@ -128,7 +128,7 @@ function LoginForm() {
           <button
             onClick={() => handleOAuth("google")}
             disabled={loading !== null}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm font-medium text-text transition-all hover:border-text-tertiary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 py-3 font-medium text-foreground transition-all hover:-translate-y-0.5 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading === "google" ? <Spinner /> : <GoogleIcon />}
             Continue with Google
@@ -137,7 +137,7 @@ function LoginForm() {
           <button
             onClick={() => handleOAuth("github")}
             disabled={loading !== null}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm font-medium text-text transition-all hover:border-text-tertiary hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+            className="group flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-4 py-3 font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading === "github" ? <Spinner /> : <GitHubIcon />}
             Continue with GitHub
@@ -146,7 +146,7 @@ function LoginForm() {
 
         <div className="my-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-border" />
-          <span className="text-xs uppercase tracking-wider text-text-secondary">
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">
             or
           </span>
           <div className="h-px flex-1 bg-border" />
@@ -160,7 +160,7 @@ function LoginForm() {
             placeholder="you@csvtu.ac.in"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <input
             type="password"
@@ -168,12 +168,12 @@ function LoginForm() {
             placeholder="Password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
           <button
             type="submit"
             disabled={loading !== null}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-text px-4 py-3 text-sm font-medium text-text-inverse transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading === "email" ? <Spinner /> : null}
             Sign in with Email
@@ -181,7 +181,7 @@ function LoginForm() {
         </form>
 
         {errorMessage ? (
-          <p className="mt-4 rounded-lg border border-error/30 bg-accent-subtle px-4 py-3 text-sm text-error">
+          <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {errorMessage}
           </p>
         ) : null}
@@ -193,7 +193,7 @@ export default function LoginPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen items-center justify-center bg-bg">
+        <main className="flex min-h-screen items-center justify-center bg-background">
           <Spinner />
         </main>
       }
@@ -205,7 +205,10 @@ export default function LoginPage() {
 
 function GoogleIcon() {
   return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24">
+    <svg
+      className="h-5 w-5 transition-transform duration-200 group-hover:scale-110"
+      viewBox="0 0 24 24"
+    >
       <path
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
         fill="#4285F4"
@@ -228,7 +231,7 @@ function GoogleIcon() {
 
 function GitHubIcon() {
   return (
-    <svg className="h-5 w-5 text-text" fill="currentColor" viewBox="0 0 24 24">
+    <svg className="h-5 w-5 text-foreground" fill="currentColor" viewBox="0 0 24 24">
       <path
         fillRule="evenodd"
         d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
@@ -241,7 +244,7 @@ function GitHubIcon() {
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 animate-spin text-text-secondary"
+      className="h-5 w-5 animate-spin text-muted-foreground"
       fill="none"
       viewBox="0 0 24 24"
     >

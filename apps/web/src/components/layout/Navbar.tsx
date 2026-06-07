@@ -20,10 +20,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { PenSquare } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { ROUTES } from "@/lib/routes";
@@ -38,19 +39,14 @@ const SCROLL_THRESHOLD = 32;
 
 /** Main navigation links. */
 const NAV_LINKS = [
+  { label: "Home", href: ROUTES.home },
   { label: "Articles", href: ROUTES.articles },
   { label: "Categories", href: ROUTES.categories },
   { label: "About", href: ROUTES.about },
 ] as const;
 
-/** Dimensions of collapsed logo icon shown after scroll. */
-const BRAND_COLLAPSED_LOGO_WIDTH = 44;
-const BRAND_COLLAPSED_LOGO_HEIGHT = 32;
-
 interface NavbarProps {
   brandText?: string;
-  collapsedLogoSrc?: string;
-  collapsedLogoAlt?: string;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -155,17 +151,14 @@ const menuItemVariants = {
 
 export function Navbar({
   brandText = "OpenForum",
-  collapsedLogoSrc = "/icon.png",
-  collapsedLogoAlt = "OpenForum",
 }: NavbarProps = {}) {
   const scrolled = useScrolled();
-  const reduceMotion = useReducedMotion();
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, loading: userLoading } = useUser();
 
-  const brandTextExpandedWidth = Math.max(170, Math.min(360, brandText.length * 11));
-  const brandExpandedWidth = brandTextExpandedWidth + 20;
+  const brandPrefix = brandText === "OpenForum" ? "Open" : brandText;
+  const brandSuffix = brandText === "OpenForum" ? "Forum" : "";
 
   /** Close mobile menu on route change. */
   useEffect(() => {
@@ -194,6 +187,9 @@ export function Navbar({
     if (href === ROUTES.articles) {
       return pathname === ROUTES.articles || pathname.startsWith(`${ROUTES.articles}/`);
     }
+    if (href === ROUTES.home) {
+      return pathname === ROUTES.home;
+    }
     return pathname.startsWith(href);
   }
 
@@ -203,138 +199,45 @@ export function Navbar({
         role="banner"
         className={[
           "fixed top-0 left-0 right-0 z-sticky",
-          "transition-all duration-slow ease-out-expo",
+          "transition-all duration-300 ease-out-expo",
           scrolled
-            ? "glass border-b border-border-light shadow-xs"
-            : "bg-transparent",
+            ? "glass border-b border-border-light py-3 shadow-sm"
+            : "bg-transparent py-5",
         ].join(" ")}
         initial={{ y: -8, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: EASE_OUT_EXPO }}
       >
         <nav
-          className="container-editorial flex items-center justify-between h-16"
+          className="container mx-auto flex max-w-6xl items-center justify-between px-4 md:px-8"
           aria-label="Main navigation"
         >
           {/* ── Logo ──────────────────────────────────────── */}
           <Link
             href={ROUTES.home}
-            className="flex items-center group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md pr-1"
+            className="flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             aria-label="OpenForum home"
           >
-            {/*
-              Scroll-reactive brand animation:
-              - At top: pipe + "OpenForum"
-              - On scroll: expanded brand collapses and full icon logo appears
-            */}
-            <motion.span
-              className="flex items-center overflow-hidden"
-              initial={false}
-              animate={
-                reduceMotion
-                  ? {
-                      maxWidth: scrolled ? 0 : brandExpandedWidth,
-                      opacity: scrolled ? 0 : 1,
-                    }
-                  : {
-                      maxWidth: scrolled ? 0 : brandExpandedWidth,
-                      opacity: scrolled ? 0 : 1,
-                    }
-              }
-              transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
-              aria-hidden={scrolled}
-            >
-              <div
-                className="w-2 h-6 rounded-full bg-accent transition-transform duration-normal group-hover:scale-y-110"
-                aria-hidden="true"
-              />
-
-              <motion.span
-                className="block overflow-hidden"
-                initial={false}
-                animate={
-                  reduceMotion
-                    ? { maxWidth: brandTextExpandedWidth, marginLeft: 8, opacity: 1 }
-                    : {
-                        maxWidth: scrolled ? 0 : brandTextExpandedWidth,
-                        marginLeft: scrolled ? 0 : 8,
-                        opacity: scrolled ? 0 : 1,
-                      }
-                }
-                transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
-                aria-hidden="true"
-              >
-                <motion.span
-                  className="block whitespace-nowrap font-heading font-semibold text-lg tracking-tight text-text"
-                  initial={false}
-                  animate={
-                    reduceMotion
-                      ? { x: 0 }
-                      : {
-                          x: scrolled ? -28 : 0,
-                        }
-                  }
-                  transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
-                >
-                  {brandText}
-                </motion.span>
-              </motion.span>
-            </motion.span>
-
-            <motion.span
-              className="block overflow-hidden"
-              initial={false}
-              animate={
-                reduceMotion
-                  ? {
-                      maxWidth: scrolled ? BRAND_COLLAPSED_LOGO_WIDTH : 0,
-                      opacity: scrolled ? 1 : 0,
-                    }
-                  : {
-                      maxWidth: scrolled ? BRAND_COLLAPSED_LOGO_WIDTH : 0,
-                      opacity: scrolled ? 1 : 0,
-                    }
-              }
-              transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
-              aria-hidden={!scrolled}
-            >
-              <motion.span
-                className="block"
-                initial={false}
-                animate={
-                  reduceMotion
-                    ? { x: 0 }
-                    : {
-                        x: scrolled ? 0 : -10,
-                      }
-                }
-                transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
-              >
-                <Image
-                  src={collapsedLogoSrc}
-                  alt={collapsedLogoAlt}
-                  width={BRAND_COLLAPSED_LOGO_WIDTH}
-                  height={BRAND_COLLAPSED_LOGO_HEIGHT}
-                  className="h-8 w-auto max-w-none"
-                  priority
-                />
-              </motion.span>
-            </motion.span>
+            <span className="font-serif text-2xl font-bold tracking-tight text-foreground">
+              {brandPrefix}
+              {brandSuffix ? (
+                <span className="font-light italic text-primary">{brandSuffix}</span>
+              ) : null}
+            </span>
           </Link>
 
           {/* ── Desktop Links ─────────────────────────────── */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden items-center gap-8 md:flex">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 className={[
-                  "relative px-3 py-2 rounded-lg text-sm font-medium font-body",
-                  "transition-colors duration-fast",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+                  "text-sm font-medium transition-colors duration-fast hover:text-primary",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive(link.href)
-                    ? "text-text bg-surface"
-                    : "text-text-secondary hover:text-text hover:bg-surface/60",
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 ].join(" ")}
                 aria-current={isActive(link.href) ? "page" : undefined}
               >
@@ -354,27 +257,20 @@ export function Navbar({
               <>
                 {user ? (
                   /* Authenticated: avatar + dropdown */
-                  <div className="hidden md:flex items-center gap-3">
+                  <div className="hidden items-center gap-3 md:flex">
                     <Link
                       href={ROUTES.write}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-medium font-body bg-accent text-text-inverse hover:bg-accent-hover transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                      className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors duration-fast hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                        aria-hidden="true"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                      </svg>
+                      <PenSquare className="h-4 w-4" />
                       Write
                     </Link>
 
+                    <div className="mx-1 h-4 w-px bg-border" />
+
                     <Link
                       href={ROUTES.profile}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-surface transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-fast hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={`View profile (${user.email})`}
                       title={`Signed in as ${user.email}`}
                     >
@@ -398,7 +294,7 @@ export function Navbar({
 
                     <button
                       onClick={handleSignOut}
-                      className="rounded-lg px-2 py-2 text-text-tertiary transition-colors duration-fast hover:bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      className="rounded-lg px-2 py-2 text-muted-foreground transition-colors duration-fast hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label={`Sign out (${user.email})`}
                       title="Sign out"
                     >
@@ -422,7 +318,7 @@ export function Navbar({
                   /* Not authenticated: sign-in link */
                   <Link
                     href={ROUTES.login}
-                    className="hidden md:inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium font-body border border-border text-text hover:bg-surface hover:border-text-tertiary transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+                    className="hidden items-center rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors duration-fast hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:inline-flex"
                   >
                     Sign in
                   </Link>

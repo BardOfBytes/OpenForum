@@ -21,7 +21,7 @@ use uuid::Uuid;
 use crate::middleware::auth::{AuthUser, OptionalAuthUser};
 use crate::state::AppState;
 
-const PROFILE_SELECT: &str = "id,email,display_name,roll_number,branch,year,avatar_url,bio";
+const PROFILE_SELECT: &str = "id,email,display_name,roll_number,branch,year,avatar_url,headline,bio,followers_count,created_at";
 
 /// User profile response.
 #[derive(Debug, Serialize)]
@@ -33,7 +33,10 @@ pub struct UserProfile {
     pub branch: Option<String>,
     pub year: Option<u8>,
     pub avatar_url: Option<String>,
+    pub headline: Option<String>,
     pub bio: Option<String>,
+    pub follower_count: u32,
+    pub created_at: Option<String>,
 }
 
 /// Public user profile response.
@@ -44,9 +47,11 @@ pub struct PublicUserProfile {
     pub branch: Option<String>,
     pub year: Option<u8>,
     pub avatar_url: Option<String>,
+    pub headline: Option<String>,
     pub bio: Option<String>,
     pub follower_count: u32,
     pub is_following: bool,
+    pub created_at: Option<String>,
 }
 
 /// Payload for updating a user profile.
@@ -56,6 +61,7 @@ pub struct UpdateProfilePayload {
     pub roll_number: Option<String>,
     pub branch: Option<String>,
     pub year: Option<u8>,
+    pub headline: Option<String>,
     pub bio: Option<String>,
 }
 
@@ -68,7 +74,10 @@ struct SupabaseProfileRow {
     branch: Option<String>,
     year: Option<u8>,
     avatar_url: Option<String>,
+    headline: Option<String>,
     bio: Option<String>,
+    followers_count: Option<i32>,
+    created_at: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,6 +99,8 @@ struct SupabaseProfilePatchPayload {
     #[serde(skip_serializing_if = "Option::is_none")]
     year: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    headline: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     bio: Option<String>,
     updated_at: String,
 }
@@ -100,6 +111,7 @@ impl SupabaseProfilePatchPayload {
             || self.roll_number.is_some()
             || self.branch.is_some()
             || self.year.is_some()
+            || self.headline.is_some()
             || self.bio.is_some()
     }
 }
@@ -117,7 +129,10 @@ fn map_profile(row: SupabaseProfileRow) -> UserProfile {
         branch: row.branch,
         year: row.year,
         avatar_url: row.avatar_url,
+        headline: row.headline,
         bio: row.bio,
+        follower_count: row.followers_count.unwrap_or_default().max(0) as u32,
+        created_at: row.created_at,
     }
 }
 
@@ -132,9 +147,11 @@ fn map_public_profile(
         branch: row.branch,
         year: row.year,
         avatar_url: row.avatar_url,
+        headline: row.headline,
         bio: row.bio,
         follower_count,
         is_following,
+        created_at: row.created_at,
     }
 }
 
@@ -251,7 +268,10 @@ async fn upsert_default_profile(
         branch: None,
         year: None,
         avatar_url: None,
+        headline: None,
         bio: None,
+        followers_count: Some(0),
+        created_at: None,
     });
 
     Ok(map_profile(profile))
@@ -337,6 +357,9 @@ async fn update_me(
         roll_number: payload.roll_number.map(|value| value.trim().to_string()),
         branch: payload.branch.map(|value| value.trim().to_string()),
         year: payload.year,
+        headline: payload
+            .headline
+            .map(|headline| headline.trim().chars().take(120).collect()),
         bio: payload
             .bio
             .map(|value| ammonia::clean(&value).trim().to_string()),

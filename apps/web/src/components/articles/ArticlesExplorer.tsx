@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, PenSquare } from "lucide-react";
+import { ArrowRight, Search, PenSquare } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ArticleGrid } from "@/components/home/ArticleGrid";
 import { CategoryPill } from "@/components/articles/CategoryPill";
@@ -38,33 +38,17 @@ export function ArticlesExplorer({ articles }: ArticlesExplorerProps) {
   return (
     <>
       <section className="border-b border-border pb-10 md:pb-12">
-        <div className="mb-8">
-          <span className="mb-2 block font-body text-xs font-medium uppercase tracking-widest text-text-tertiary">
-            OpenForum Archive
-          </span>
-          <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div className="max-w-2xl">
-              <h1 className="font-heading text-4xl font-semibold tracking-normal text-text md:text-5xl">
-                Explore the Archives
-              </h1>
-              <p className="mt-4 max-w-xl font-body text-text-secondary">
-                Search campus reporting, opinion, career notes, and student essays from across
-                OpenForum.
-              </p>
-            </div>
-
-            <div className="font-body text-sm text-text-tertiary">
-              {filteredArticles.length} of {articles.length} article
-              {articles.length === 1 ? "" : "s"}
-            </div>
+        <div className="mb-8 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+          <div className="max-w-2xl">
+            <h1 className="font-serif text-4xl font-medium tracking-normal text-foreground md:text-5xl">
+              Explore the Archives
+            </h1>
           </div>
-        </div>
 
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <label className="relative block w-full md:max-w-sm">
+          <label className="relative block w-full md:max-w-md">
             <span className="sr-only">Search articles</span>
             <Search
-              className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-tertiary"
+              className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
             <input
@@ -72,27 +56,27 @@ export function ArticlesExplorer({ articles }: ArticlesExplorerProps) {
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Search articles..."
-              className="w-full rounded-xl border border-border bg-bg-elevated py-3 pl-10 pr-4 text-sm text-text outline-none transition-colors placeholder:text-text-tertiary focus:border-accent focus:ring-2 focus:ring-accent/20"
+              className="w-full rounded-xl border border-border bg-card py-3 pl-10 pr-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </label>
+        </div>
 
-          <div className="flex w-full items-center gap-3 overflow-x-auto pb-1 md:w-auto md:pb-0 no-scrollbar">
+        <div className="flex w-full items-center gap-3 overflow-x-auto pb-1 no-scrollbar">
+          <CategoryPill
+            active={activeCategory === ALL_TOPICS}
+            onClick={() => setActiveCategory(ALL_TOPICS)}
+          >
+            All Topics
+          </CategoryPill>
+          {CATEGORY_CATALOG.map((category) => (
             <CategoryPill
-              active={activeCategory === ALL_TOPICS}
-              onClick={() => setActiveCategory(ALL_TOPICS)}
+              key={category.slug}
+              active={activeCategory === category.name}
+              onClick={() => setActiveCategory(category.name)}
             >
-              All Topics
+              {category.name}
             </CategoryPill>
-            {CATEGORY_CATALOG.map((category) => (
-              <CategoryPill
-                key={category.slug}
-                active={activeCategory === category.name}
-                onClick={() => setActiveCategory(category.name)}
-              >
-                {category.name}
-              </CategoryPill>
-            ))}
-          </div>
+          ))}
         </div>
       </section>
 
@@ -100,40 +84,44 @@ export function ArticlesExplorer({ articles }: ArticlesExplorerProps) {
         {filteredArticles.length > 0 ? (
           <ArticleGrid articles={filteredArticles} />
         ) : (
-          <div className="rounded-xl border border-border-light bg-bg-elevated px-6 py-20 text-center">
-            <h2 className="font-heading text-2xl font-semibold text-text">
+          <div className="rounded-2xl border border-border bg-card px-6 py-20 text-center">
+            <h2 className="font-serif text-2xl font-medium text-foreground">
               No articles found
             </h2>
-            <p className="mx-auto mt-3 max-w-md font-body text-sm leading-relaxed text-text-secondary">
+            <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
               Try a different search term or switch categories.
             </p>
           </div>
         )}
       </section>
 
-      <section className="rounded-2xl border border-accent/20 bg-accent-subtle px-8 py-12 text-center md:px-16">
-        <span className="mb-3 block font-body text-xs font-bold uppercase tracking-widest text-accent">
+      <section className="relative overflow-hidden rounded-2xl border border-primary/15 bg-primary/5 px-8 py-12 text-center md:px-16">
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent" />
+        <span className="relative mb-3 block text-xs font-bold uppercase tracking-widest text-primary">
           For CSVTU Students & Faculty
         </span>
-        <h2 className="font-heading text-3xl font-semibold tracking-normal text-text md:text-4xl">
+        <h2 className="relative font-serif text-3xl font-medium tracking-normal text-foreground md:text-4xl">
           Your ideas deserve a platform.
         </h2>
-        <p className="mx-auto mt-4 max-w-xl font-body text-text-secondary">
-          Sign in with your institutional account and publish thoughtful work for the campus.
+        <p className="relative mx-auto mt-4 max-w-xl text-muted-foreground">
+          OpenForum is built for students and faculty of CSVTU. Sign in with your
+          institutional account and start writing today — no editorial gatekeeping,
+          just good thinking.
         </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <div className="relative mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
             href={ROUTES.write}
-            className="inline-flex items-center gap-2 rounded-full bg-accent px-7 py-3 text-sm font-semibold text-text-inverse shadow-sm transition-colors hover:bg-accent-hover"
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-7 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <PenSquare className="h-4 w-4" />
             Write for OpenForum
           </Link>
           <Link
             href={ROUTES.about}
-            className="text-sm font-medium text-text transition-colors hover:text-accent"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-primary"
           >
             Learn more
+            <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>

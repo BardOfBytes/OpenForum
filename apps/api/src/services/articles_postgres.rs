@@ -6,7 +6,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::models::article::{
-    Article, ArticlePreview, Author, Category, NewArticle, youtube_thumbnail_from_html,
+    Article, ArticlePreview, Author, AuthorSummary, Category, NewArticle,
+    youtube_thumbnail_from_html,
 };
 
 use super::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
@@ -30,11 +31,17 @@ struct ArticlePreviewRow {
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     views: i32,
+    featured: bool,
     cover_image_url: Option<String>,
     category_name: String,
     author_id: Uuid,
     author_name: String,
     author_avatar_url: Option<String>,
+    author_username: Option<String>,
+    author_headline: Option<String>,
+    author_bio: Option<String>,
+    author_articles_published: i64,
+    author_total_views: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -42,6 +49,7 @@ struct ArticleRow {
     id: Uuid,
     slug: String,
     title: String,
+    subtitle: String,
     excerpt: String,
     body: String,
     content_gdoc_id: Option<String>,
@@ -55,6 +63,11 @@ struct ArticleRow {
     cover_image_url: Option<String>,
     author_name: String,
     author_avatar_url: Option<String>,
+    author_username: Option<String>,
+    author_headline: Option<String>,
+    author_bio: Option<String>,
+    author_articles_published: i64,
+    author_total_views: i64,
 }
 
 #[derive(sqlx::FromRow)]
@@ -70,6 +83,19 @@ struct CommentRow {
     updated_at: DateTime<Utc>,
 }
 
+#[derive(sqlx::FromRow)]
+struct AuthorSummaryRow {
+    id: Uuid,
+    name: String,
+    username: Option<String>,
+    avatar_url: Option<String>,
+    headline: Option<String>,
+    bio: Option<String>,
+    articles_published: i64,
+    total_views: i64,
+    follower_count: i32,
+}
+
 impl PostgresArticlesService {
     pub fn new(pool: PgPool, cache: crate::services::cache::CacheService) -> Self {
         Self { pool, cache }
@@ -80,11 +106,23 @@ impl PostgresArticlesService {
         limit: usize,
         offset: usize,
         category: Option<&str>,
+        search: Option<&str>,
+        author: Option<Uuid>,
     ) -> Result<Vec<ArticlePreview>> {
-        let cache_key =
-            crate::services::cache::keys::article_list(offset as u32, limit as u32, category);
-        if let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(&cache_key).await {
-            return Ok(cached);
+        let search = search.map(str::trim).filter(|search| !search.is_empty());
+        let cache_key = if search.is_none() && author.is_none() {
+            Some(crate::services::cache::keys::article_list(
+                offset as u32,
+                limit as u32,
+                category,
+            ))
+        } else {
+            None
+        };
+        if let Some(cache_key) = cache_key.as_deref() {
+            if let Ok(Some(cached)) = self.cache.get::<Vec<ArticlePreview>>(cache_key).await {
+                return Ok(cached);
+            }
         }
 
         let rows: Vec<ArticlePreviewRow> = sqlx::query_as(
@@ -101,6 +139,7 @@ impl PostgresArticlesService {
               a.created_at,
               a.updated_at,
               a.views,
+              coalesce(a.featured, false) as featured,
               a.cover_image_url,
               a.category_name,
               a.author_id,
@@ -110,19 +149,43 @@ impl PostgresArticlesService {
                 nullif(split_part(p.email, '@', 1), ''),
                 'Unknown Author'
               ) as author_name,
-              p.avatar_url as author_avatar_url
+              p.avatar_url as author_avatar_url,
+              p.username as author_username,
+              p.headline as author_headline,
+              p.bio as author_bio,
+              coalesce(author_stats.articles_published, 0) as author_articles_published,
+              coalesce(author_stats.total_views, 0) as author_total_views
             FROM articles a
             LEFT JOIN profiles p ON p.id = a.author_id
+            LEFT JOIN LATERAL (
+              SELECT
+                count(*)::bigint as articles_published,
+                coalesce(sum(views), 0)::bigint as total_views
+              FROM articles authored_articles
+              WHERE authored_articles.author_id = a.author_id
+                AND lower(authored_articles.status) = 'published'
+            ) author_stats ON true
             WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
               AND ($1::text IS NULL OR a.category_slug = $1)
-            ORDER BY a.created_at DESC
+              AND ($4::uuid IS NULL OR a.author_id = $4)
+              AND (
+                $5::text IS NULL
+                OR a.title ILIKE '%' || $5 || '%'
+                OR a.excerpt ILIKE '%' || $5 || '%'
+                OR a.body ILIKE '%' || $5 || '%'
+                OR coalesce(p.display_name, p.username, p.email, '') ILIKE '%' || $5 || '%'
+              )
+            ORDER BY coalesce(a.featured, false) DESC, a.created_at DESC
             LIMIT $2
             OFFSET $3
             "#,
         )
+        .persistent(false)
         .bind(category)
         .bind(limit as i64)
         .bind(offset as i64)
+        .bind(author)
+        .bind(search)
         .fetch_all(&self.pool)
         .await
         .context("Failed to list articles from Postgres")?;
@@ -147,6 +210,7 @@ impl PostgresArticlesService {
                     created_at: row.created_at,
                     updated_at: row.updated_at,
                     views: row.views.max(0) as u32,
+                    featured: row.featured,
                     cover_image_url: row.cover_image_url,
                     preview_image_url,
                     category: Category {
@@ -157,52 +221,85 @@ impl PostgresArticlesService {
                         id: row.author_id,
                         name: row.author_name,
                         avatar_url: row.author_avatar_url,
+                        username: row.author_username,
+                        headline: row.author_headline,
+                        bio: row.author_bio,
+                        articles_published: row.author_articles_published.max(0) as u32,
+                        total_views: row.author_total_views.max(0) as u32,
                     },
                     read_time_minutes,
                 }
             })
             .collect();
 
-        let _ = self
-            .cache
-            .set(
-                &cache_key,
-                &previews,
-                crate::services::cache::ttl::ARTICLE_LIST,
-            )
-            .await;
+        if let Some(cache_key) = cache_key.as_deref() {
+            let _ = self
+                .cache
+                .set(
+                    cache_key,
+                    &previews,
+                    crate::services::cache::ttl::ARTICLE_LIST,
+                )
+                .await;
+        }
 
         Ok(previews)
     }
 
-    pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
-        let cache_key = crate::services::cache::keys::article_count(category);
-        if let Ok(Some(cached)) = self.cache.get::<u32>(&cache_key).await {
-            return Ok(cached);
+    pub async fn count_posts(
+        &self,
+        category: Option<&str>,
+        search: Option<&str>,
+        author: Option<Uuid>,
+    ) -> Result<u32> {
+        let search = search.map(str::trim).filter(|search| !search.is_empty());
+        let cache_key = if search.is_none() && author.is_none() {
+            Some(crate::services::cache::keys::article_count(category))
+        } else {
+            None
+        };
+        if let Some(cache_key) = cache_key.as_deref() {
+            if let Ok(Some(cached)) = self.cache.get::<u32>(cache_key).await {
+                return Ok(cached);
+            }
         }
 
         let count: i64 = sqlx::query_scalar(
             r#"
             SELECT COUNT(*)
-            FROM articles
-            WHERE (lower(status) = 'published' OR lower(status) = 'draft')
-              AND ($1::text IS NULL OR category_slug = $1)
+            FROM articles a
+            LEFT JOIN profiles p ON p.id = a.author_id
+            WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
+              AND ($1::text IS NULL OR a.category_slug = $1)
+              AND ($2::uuid IS NULL OR a.author_id = $2)
+              AND (
+                $3::text IS NULL
+                OR a.title ILIKE '%' || $3 || '%'
+                OR a.excerpt ILIKE '%' || $3 || '%'
+                OR a.body ILIKE '%' || $3 || '%'
+                OR coalesce(p.display_name, p.username, p.email, '') ILIKE '%' || $3 || '%'
+              )
             "#,
         )
+        .persistent(false)
         .bind(category)
+        .bind(author)
+        .bind(search)
         .fetch_one(&self.pool)
         .await
         .context("Failed to count articles in Postgres")?;
 
         let total = count.max(0) as u32;
-        let _ = self
-            .cache
-            .set(
-                &cache_key,
-                &total,
-                crate::services::cache::ttl::ARTICLE_COUNT,
-            )
-            .await;
+        if let Some(cache_key) = cache_key.as_deref() {
+            let _ = self
+                .cache
+                .set(
+                    cache_key,
+                    &total,
+                    crate::services::cache::ttl::ARTICLE_COUNT,
+                )
+                .await;
+        }
 
         Ok(total)
     }
@@ -219,6 +316,7 @@ impl PostgresArticlesService {
               a.id,
               a.slug,
               a.title,
+              a.subtitle,
               a.excerpt,
               a.body,
               a.content_gdoc_id,
@@ -236,13 +334,27 @@ impl PostgresArticlesService {
                 nullif(split_part(p.email, '@', 1), ''),
                 'Unknown Author'
               ) as author_name,
-              p.avatar_url as author_avatar_url
+              p.avatar_url as author_avatar_url,
+              p.username as author_username,
+              p.headline as author_headline,
+              p.bio as author_bio,
+              coalesce(author_stats.articles_published, 0) as author_articles_published,
+              coalesce(author_stats.total_views, 0) as author_total_views
             FROM articles a
             LEFT JOIN profiles p ON p.id = a.author_id
+            LEFT JOIN LATERAL (
+              SELECT
+                count(*)::bigint as articles_published,
+                coalesce(sum(views), 0)::bigint as total_views
+              FROM articles authored_articles
+              WHERE authored_articles.author_id = a.author_id
+                AND lower(authored_articles.status) = 'published'
+            ) author_stats ON true
             WHERE a.slug = $1
             LIMIT 1
             "#,
         )
+        .persistent(false)
         .bind(slug)
         .fetch_optional(&self.pool)
         .await
@@ -271,6 +383,7 @@ impl PostgresArticlesService {
             id: row.id,
             slug: row.slug,
             title: row.title,
+            subtitle: row.subtitle,
             excerpt: row.excerpt,
             content_gdoc_id: row.content_gdoc_id,
             author_id: row.author_id,
@@ -290,6 +403,11 @@ impl PostgresArticlesService {
                 id: row.author_id,
                 name: row.author_name,
                 avatar_url: row.author_avatar_url,
+                username: row.author_username,
+                headline: row.author_headline,
+                bio: row.author_bio,
+                articles_published: row.author_articles_published.max(0) as u32,
+                total_views: row.author_total_views.max(0) as u32,
             }),
             read_time_minutes: resolved_read_time_minutes,
         };
@@ -304,6 +422,62 @@ impl PostgresArticlesService {
             .await;
 
         Ok(Some(article))
+    }
+
+    pub async fn list_authors(&self, limit: usize) -> Result<Vec<AuthorSummary>> {
+        let rows: Vec<AuthorSummaryRow> = sqlx::query_as(
+            r#"
+            SELECT
+              p.id,
+              coalesce(
+                nullif(trim(p.display_name), ''),
+                nullif(trim(p.username), ''),
+                nullif(split_part(p.email, '@', 1), ''),
+                'Unknown Author'
+              ) as name,
+              p.username,
+              p.avatar_url,
+              p.headline,
+              p.bio,
+              count(a.id)::bigint as articles_published,
+              coalesce(sum(a.views), 0)::bigint as total_views,
+              coalesce(p.followers_count, 0) as follower_count
+            FROM profiles p
+            JOIN articles a ON a.author_id = p.id
+            WHERE lower(a.status) = 'published'
+            GROUP BY
+              p.id,
+              p.display_name,
+              p.username,
+              p.email,
+              p.avatar_url,
+              p.headline,
+              p.bio,
+              p.followers_count
+            ORDER BY count(a.id) DESC, coalesce(sum(a.views), 0) DESC, p.display_name ASC
+            LIMIT $1
+            "#,
+        )
+        .persistent(false)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .context("Failed to list authors from Postgres")?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| AuthorSummary {
+                id: row.id,
+                name: row.name,
+                username: row.username,
+                avatar_url: row.avatar_url,
+                headline: row.headline,
+                bio: row.bio,
+                articles_published: row.articles_published.max(0) as u32,
+                total_views: row.total_views.max(0) as u32,
+                follower_count: row.follower_count.max(0) as u32,
+            })
+            .collect())
     }
 
     pub async fn create_post(&self, new_post: NewArticle, author_id: Uuid) -> Result<Article> {
@@ -321,6 +495,7 @@ impl PostgresArticlesService {
                   id,
                   slug,
                   title,
+                  subtitle,
                   excerpt,
                   body,
                   content_gdoc_id,
@@ -334,13 +509,15 @@ impl PostgresArticlesService {
                   views,
                   cover_image_url
                 ) VALUES (
-                  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15
+                  $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16
                 )
                 "#,
             )
+            .persistent(false)
             .bind(id)
             .bind(&slug)
             .bind(&new_post.title)
+            .bind(&new_post.subtitle)
             .bind(&new_post.excerpt)
             .bind(&new_post.body)
             .bind(&new_post.content_gdoc_id)
@@ -381,6 +558,7 @@ impl PostgresArticlesService {
             id,
             slug: slug.clone(),
             title: new_post.title,
+            subtitle: new_post.subtitle,
             excerpt: new_post.excerpt,
             content_gdoc_id: new_post.content_gdoc_id,
             author_id,
@@ -418,6 +596,7 @@ impl PostgresArticlesService {
         }
 
         let title = patch.title.unwrap_or_else(|| current.title.clone());
+        let subtitle = patch.subtitle.unwrap_or_else(|| current.subtitle.clone());
         let body = patch.body.unwrap_or_else(|| current.body.clone());
         let excerpt = patch.excerpt.unwrap_or_else(|| current.excerpt.clone());
         let content_gdoc_id = patch.content_gdoc_id.unwrap_or(current.content_gdoc_id);
@@ -433,20 +612,23 @@ impl PostgresArticlesService {
             r#"
             UPDATE articles
             SET title = $1,
-                excerpt = $2,
-                body = $3,
-                content_gdoc_id = $4,
-                category_name = $5,
-                category_slug = $6,
-                tags = $7,
-                status = $8,
-                cover_image_url = $9,
+                subtitle = $2,
+                excerpt = $3,
+                body = $4,
+                content_gdoc_id = $5,
+                category_name = $6,
+                category_slug = $7,
+                tags = $8,
+                status = $9,
+                cover_image_url = $10,
                 updated_at = now()
-            WHERE slug = $10
-              AND ($11::boolean OR author_id = $12)
+            WHERE slug = $11
+              AND ($12::boolean OR author_id = $13)
             "#,
         )
+        .persistent(false)
         .bind(title)
+        .bind(subtitle)
         .bind(excerpt)
         .bind(body)
         .bind(content_gdoc_id)
@@ -484,6 +666,7 @@ impl PostgresArticlesService {
               AND ($2::boolean OR author_id = $3)
             "#,
         )
+        .persistent(false)
         .bind(slug)
         .bind(can_manage_all)
         .bind(actor_id)
@@ -511,6 +694,7 @@ impl PostgresArticlesService {
             WHERE slug = $1
             "#,
         )
+        .persistent(false)
         .bind(slug)
         .execute(&self.pool)
         .await
@@ -540,6 +724,7 @@ impl PostgresArticlesService {
             ON CONFLICT (user_id, article_id) DO NOTHING
             "#,
         )
+        .persistent(false)
         .bind(user_id)
         .bind(article_id)
         .execute(&self.pool)
@@ -565,6 +750,7 @@ impl PostgresArticlesService {
             sqlx::query_scalar::<_, bool>(
                 "SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND article_id = $2)",
             )
+            .persistent(false)
             .bind(viewer_id)
             .bind(article_id)
             .fetch_one(&self.pool)
@@ -578,6 +764,7 @@ impl PostgresArticlesService {
             sqlx::query_scalar::<_, bool>(
                 "SELECT EXISTS(SELECT 1 FROM bookmarks WHERE user_id = $1 AND article_id = $2)",
             )
+            .persistent(false)
             .bind(viewer_id)
             .bind(article_id)
             .fetch_one(&self.pool)
@@ -605,6 +792,7 @@ impl PostgresArticlesService {
         };
 
         sqlx::query("DELETE FROM likes WHERE user_id = $1 AND article_id = $2")
+            .persistent(false)
             .bind(user_id)
             .bind(article_id)
             .execute(&self.pool)
@@ -629,6 +817,7 @@ impl PostgresArticlesService {
             ON CONFLICT (user_id, article_id) DO NOTHING
             "#,
         )
+        .persistent(false)
         .bind(user_id)
         .bind(article_id)
         .execute(&self.pool)
@@ -651,6 +840,7 @@ impl PostgresArticlesService {
         };
 
         sqlx::query("DELETE FROM bookmarks WHERE user_id = $1 AND article_id = $2")
+            .persistent(false)
             .bind(user_id)
             .bind(article_id)
             .execute(&self.pool)
@@ -688,9 +878,11 @@ impl PostgresArticlesService {
             FROM comments c
             LEFT JOIN profiles p ON p.id = c.author_id
             WHERE c.article_id = $1
+              AND coalesce(c.is_hidden, false) = false
             ORDER BY c.created_at ASC
             "#,
         )
+        .persistent(false)
         .bind(article_id)
         .fetch_all(&self.pool)
         .await
@@ -736,6 +928,7 @@ impl PostgresArticlesService {
             LEFT JOIN profiles p ON p.id = inserted.author_id
             "#,
         )
+        .persistent(false)
         .bind(article_id)
         .bind(author_id)
         .bind(body)
@@ -781,6 +974,7 @@ impl PostgresArticlesService {
             LEFT JOIN profiles p ON p.id = updated.author_id
             "#,
         )
+        .persistent(false)
         .bind(body)
         .bind(comment_id)
         .bind(author_id)
@@ -793,11 +987,45 @@ impl PostgresArticlesService {
 
     pub async fn delete_comment(&self, comment_id: Uuid, author_id: Uuid) -> Result<bool> {
         let result = sqlx::query("DELETE FROM comments WHERE id = $1 AND author_id = $2")
+            .persistent(false)
             .bind(comment_id)
             .bind(author_id)
             .execute(&self.pool)
             .await
             .context("Failed to delete comment from Postgres")?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn hide_comment(&self, comment_id: Uuid, moderator_id: Uuid) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE comments
+            SET is_hidden = true,
+                hidden_at = coalesce(hidden_at, now()),
+                hidden_by = coalesce(hidden_by, $2),
+                updated_at = now()
+            WHERE id = $1
+              AND coalesce(is_hidden, false) = false
+            "#,
+        )
+        .persistent(false)
+        .bind(comment_id)
+        .bind(moderator_id)
+        .execute(&self.pool)
+        .await
+        .context("Failed to hide comment in Postgres")?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_comment_as_moderator(&self, comment_id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM comments WHERE id = $1")
+            .persistent(false)
+            .bind(comment_id)
+            .execute(&self.pool)
+            .await
+            .context("Failed to delete comment as moderator from Postgres")?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -811,6 +1039,7 @@ impl PostgresArticlesService {
                 ON CONFLICT (follower_id, following_id) DO NOTHING
                 "#,
             )
+            .persistent(false)
             .bind(follower_id)
             .bind(following_id)
             .execute(&self.pool)
@@ -830,6 +1059,7 @@ impl PostgresArticlesService {
         following_id: Uuid,
     ) -> Result<SocialState> {
         sqlx::query("DELETE FROM follows WHERE follower_id = $1 AND following_id = $2")
+            .persistent(false)
             .bind(follower_id)
             .bind(following_id)
             .execute(&self.pool)
@@ -854,6 +1084,7 @@ impl PostgresArticlesService {
                 sqlx::query_scalar::<_, bool>(
                     "SELECT EXISTS(SELECT 1 FROM follows WHERE follower_id = $1 AND following_id = $2)",
                 )
+                .persistent(false)
                 .bind(viewer_id)
                 .bind(following_id)
                 .fetch_one(&self.pool)
@@ -872,6 +1103,7 @@ impl PostgresArticlesService {
 
     async fn article_id_by_slug(&self, slug: &str) -> Result<Option<Uuid>> {
         sqlx::query_scalar("SELECT id FROM articles WHERE slug = $1 LIMIT 1")
+            .persistent(false)
             .bind(slug)
             .fetch_optional(&self.pool)
             .await
@@ -886,6 +1118,7 @@ impl PostgresArticlesService {
         };
 
         let count: i64 = sqlx::query_scalar(query)
+            .persistent(false)
             .bind(article_id)
             .fetch_one(&self.pool)
             .await
@@ -895,6 +1128,7 @@ impl PostgresArticlesService {
 
     async fn count_followers(&self, following_id: Uuid) -> Result<u32> {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM follows WHERE following_id = $1")
+            .persistent(false)
             .bind(following_id)
             .fetch_one(&self.pool)
             .await

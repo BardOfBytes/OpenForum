@@ -9,7 +9,9 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::models::article::{Article, ArticlePreview, Author, Category, NewArticle};
+use crate::models::article::{
+    Article, ArticlePreview, Author, AuthorSummary, Category, NewArticle,
+};
 
 use super::articles_postgres::PostgresArticlesService;
 
@@ -33,20 +35,21 @@ impl ArticlesService {
         limit: usize,
         offset: usize,
         category: Option<&str>,
+        search: Option<&str>,
+        author: Option<Uuid>,
     ) -> Result<Vec<ArticlePreview>> {
         match self {
-            Self::Postgres(service) => service.get_posts(limit, offset, category).await,
+            Self::Postgres(service) => {
+                service
+                    .get_posts(limit, offset, category, search, author)
+                    .await
+            }
             Self::InMemory(state) => {
                 let state = state.lock().expect("in-memory articles mutex poisoned");
                 let previews = state
                     .articles
                     .iter()
-                    .filter(|article| {
-                        category.is_none_or(|category| {
-                            slug::slugify(&article.category) == category
-                                || article.category.eq_ignore_ascii_case(category)
-                        })
-                    })
+                    .filter(|article| article_matches_filters(article, category, search, author))
                     .skip(offset)
                     .take(limit)
                     .map(article_preview_from_article)
@@ -56,20 +59,20 @@ impl ArticlesService {
         }
     }
 
-    pub async fn count_posts(&self, category: Option<&str>) -> Result<u32> {
+    pub async fn count_posts(
+        &self,
+        category: Option<&str>,
+        search: Option<&str>,
+        author: Option<Uuid>,
+    ) -> Result<u32> {
         match self {
-            Self::Postgres(service) => service.count_posts(category).await,
+            Self::Postgres(service) => service.count_posts(category, search, author).await,
             Self::InMemory(state) => {
                 let state = state.lock().expect("in-memory articles mutex poisoned");
                 Ok(state
                     .articles
                     .iter()
-                    .filter(|article| {
-                        category.is_none_or(|category| {
-                            slug::slugify(&article.category) == category
-                                || article.category.eq_ignore_ascii_case(category)
-                        })
-                    })
+                    .filter(|article| article_matches_filters(article, category, search, author))
                     .count() as u32)
             }
         }
@@ -85,6 +88,55 @@ impl ArticlesService {
                     .iter()
                     .find(|article| article.slug == slug)
                     .cloned())
+            }
+        }
+    }
+
+    pub async fn list_authors(&self, limit: usize) -> Result<Vec<AuthorSummary>> {
+        match self {
+            Self::Postgres(service) => service.list_authors(limit).await,
+            Self::InMemory(state) => {
+                let state = state.lock().expect("in-memory articles mutex poisoned");
+                let mut authors: Vec<AuthorSummary> = Vec::new();
+
+                for article in &state.articles {
+                    let author = article.author_detail.clone().unwrap_or(Author {
+                        id: article.author_id,
+                        name: "Test Author".to_string(),
+                        avatar_url: None,
+                        username: None,
+                        headline: None,
+                        bio: None,
+                        articles_published: 0,
+                        total_views: 0,
+                    });
+
+                    if let Some(existing) = authors.iter_mut().find(|item| item.id == author.id) {
+                        existing.articles_published += 1;
+                        existing.total_views += article.views;
+                    } else {
+                        authors.push(AuthorSummary {
+                            id: author.id,
+                            name: author.name,
+                            username: author.username,
+                            avatar_url: author.avatar_url,
+                            headline: author.headline,
+                            bio: author.bio,
+                            articles_published: 1,
+                            total_views: article.views,
+                            follower_count: 0,
+                        });
+                    }
+                }
+
+                authors.sort_by(|left, right| {
+                    right
+                        .articles_published
+                        .cmp(&left.articles_published)
+                        .then_with(|| right.total_views.cmp(&left.total_views))
+                });
+                authors.truncate(limit);
+                Ok(authors)
             }
         }
     }
@@ -106,6 +158,7 @@ impl ArticlesService {
                     id: Uuid::new_v4(),
                     slug,
                     title: new_post.title,
+                    subtitle: new_post.subtitle,
                     excerpt: new_post.excerpt,
                     content_gdoc_id: new_post.content_gdoc_id,
                     author_id,
@@ -125,6 +178,11 @@ impl ArticlesService {
                         id: author_id,
                         name: "Test Author".to_string(),
                         avatar_url: None,
+                        username: None,
+                        headline: None,
+                        bio: None,
+                        articles_published: 0,
+                        total_views: 0,
                     }),
                     read_time_minutes,
                 };
@@ -180,6 +238,9 @@ impl ArticlesService {
 
                 if let Some(title) = patch.title {
                     article.title = title;
+                }
+                if let Some(subtitle) = patch.subtitle {
+                    article.subtitle = subtitle;
                 }
                 if let Some(body) = patch.body {
                     article.body = body;
@@ -472,6 +533,42 @@ impl ArticlesService {
         }
     }
 
+    pub async fn hide_comment(&self, comment_id: Uuid, moderator_id: Uuid) -> Result<bool> {
+        match self {
+            Self::Postgres(service) => service.hide_comment(comment_id, moderator_id).await,
+            Self::InMemory(state) => {
+                let mut state = state.lock().expect("in-memory articles mutex poisoned");
+                let Some(index) = state
+                    .comments
+                    .iter()
+                    .position(|comment| comment.id == comment_id)
+                else {
+                    return Ok(false);
+                };
+                state.comments.remove(index);
+                Ok(true)
+            }
+        }
+    }
+
+    pub async fn delete_comment_as_moderator(&self, comment_id: Uuid) -> Result<bool> {
+        match self {
+            Self::Postgres(service) => service.delete_comment_as_moderator(comment_id).await,
+            Self::InMemory(state) => {
+                let mut state = state.lock().expect("in-memory articles mutex poisoned");
+                let Some(index) = state
+                    .comments
+                    .iter()
+                    .position(|comment| comment.id == comment_id)
+                else {
+                    return Ok(false);
+                };
+                state.comments.remove(index);
+                Ok(true)
+            }
+        }
+    }
+
     pub async fn follow_user(&self, follower_id: Uuid, following_id: Uuid) -> Result<SocialState> {
         match self {
             Self::Postgres(service) => service.follow_user(follower_id, following_id).await,
@@ -561,6 +658,7 @@ impl InMemoryArticlesState {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UpdateArticle {
     pub title: Option<String>,
+    pub subtitle: Option<String>,
     pub body: Option<String>,
     pub excerpt: Option<String>,
     pub content_gdoc_id: Option<Option<String>>,
@@ -607,6 +705,7 @@ fn article_preview_from_article(article: &Article) -> ArticlePreview {
         created_at: article.created_at,
         updated_at: article.updated_at,
         views: article.views,
+        featured: false,
         cover_image_url: article.cover_image_url.clone(),
         preview_image_url: article.cover_image_url.clone(),
         category: article.category_detail.clone().unwrap_or_else(|| Category {
@@ -617,9 +716,42 @@ fn article_preview_from_article(article: &Article) -> ArticlePreview {
             id: article.author_id,
             name: "Test Author".to_string(),
             avatar_url: None,
+            username: None,
+            headline: None,
+            bio: None,
+            articles_published: 0,
+            total_views: 0,
         }),
         read_time_minutes: article.read_time_minutes,
     }
+}
+
+fn article_matches_filters(
+    article: &Article,
+    category: Option<&str>,
+    search: Option<&str>,
+    author: Option<Uuid>,
+) -> bool {
+    let matches_category = category.is_none_or(|category| {
+        slug::slugify(&article.category) == category
+            || article.category.eq_ignore_ascii_case(category)
+    });
+    let matches_author = author.is_none_or(|author| article.author_id == author);
+    let matches_search = search
+        .map(str::trim)
+        .filter(|search| !search.is_empty())
+        .is_none_or(|search| {
+            let normalized = search.to_lowercase();
+            article.title.to_lowercase().contains(&normalized)
+                || article.excerpt.to_lowercase().contains(&normalized)
+                || article.body.to_lowercase().contains(&normalized)
+                || article
+                    .author_detail
+                    .as_ref()
+                    .is_some_and(|author| author.name.to_lowercase().contains(&normalized))
+        });
+
+    matches_category && matches_author && matches_search
 }
 
 fn read_time_minutes(text: &str) -> u16 {

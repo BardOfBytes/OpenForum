@@ -107,7 +107,7 @@ function SignupForm() {
       footer={
         <>
           Already have an account?{" "}
-          <Link href={loginUrl} className="font-semibold text-text underline hover:text-accent">
+          <Link href={loginUrl} className="font-medium text-primary hover:underline">
             Sign in
           </Link>
         </>
@@ -121,7 +121,7 @@ function SignupForm() {
             placeholder="you@csvtu.ac.in"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
 
           <input
@@ -130,7 +130,7 @@ function SignupForm() {
             placeholder="Password (min 8 characters)"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
 
           <input
@@ -139,13 +139,13 @@ function SignupForm() {
             placeholder="Confirm password"
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
-            className="w-full rounded-lg border border-border bg-bg-elevated px-4 py-3 text-sm text-text placeholder:text-text-tertiary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25"
+            className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
 
           <button
             type="submit"
             disabled={submitting}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-text px-4 py-3 text-sm font-medium text-text-inverse transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {submitting ? <Spinner /> : null}
             Create Account
@@ -153,13 +153,13 @@ function SignupForm() {
         </form>
 
         {errorMessage ? (
-          <p className="mt-4 rounded-lg border border-error/30 bg-accent-subtle px-4 py-3 text-sm text-error">
+          <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {errorMessage}
           </p>
         ) : null}
 
         {successMessage ? (
-          <p className="mt-4 rounded-lg border border-success/40 bg-surface px-4 py-3 text-sm text-success">
+          <p className="mt-4 rounded-lg border border-success/40 bg-card px-4 py-3 text-sm text-success">
             {successMessage}
           </p>
         ) : null}
@@ -171,7 +171,7 @@ export default function SignupPage() {
   return (
     <Suspense
       fallback={
-        <main className="flex min-h-screen items-center justify-center bg-bg">
+        <main className="flex min-h-screen items-center justify-center bg-background">
           <Spinner />
         </main>
       }
@@ -184,7 +184,7 @@ export default function SignupPage() {
 function Spinner() {
   return (
     <svg
-      className="h-5 w-5 animate-spin text-text-secondary"
+      className="h-5 w-5 animate-spin text-muted-foreground"
       fill="none"
       viewBox="0 0 24 24"
     >

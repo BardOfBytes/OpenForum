@@ -28,7 +28,7 @@ export function FollowButton({
     return (
       <Link
         href={`${ROUTES.login}?redirect=${encodeURIComponent(ROUTES.author.detail(authorId))}`}
-        className="inline-flex items-center gap-2 rounded-full border border-border bg-bg px-5 py-2.5 text-sm font-semibold text-text transition-colors hover:bg-surface"
+        className="inline-flex items-center gap-2 rounded-full border border-border bg-background px-5 py-2.5 text-sm font-medium text-foreground transition-colors hover:bg-muted"
       >
         <UserPlus className="h-4 w-4" />
         Sign in to follow
@@ -78,20 +78,20 @@ export function FollowButton({
         onClick={toggleFollow}
         disabled={pending}
         className={[
-          "inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-70",
+          "inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-colors disabled:cursor-wait disabled:opacity-70",
           following
-            ? "border border-border bg-bg text-text hover:bg-surface"
-            : "bg-accent text-text-inverse hover:bg-accent-hover",
+            ? "border border-border bg-background text-foreground hover:bg-muted"
+            : "bg-primary text-primary-foreground hover:bg-primary/90",
         ].join(" ")}
         aria-pressed={following}
       >
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
         {following ? "Following" : "Follow author"}
       </button>
-      <p className="text-xs text-text-tertiary">
+      <p className="text-xs text-muted-foreground">
         {followerCount} {followerCount === 1 ? "follower" : "followers"}
       </p>
-      {error ? <p className="text-xs text-error">{error}</p> : null}
+      {error ? <p className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }

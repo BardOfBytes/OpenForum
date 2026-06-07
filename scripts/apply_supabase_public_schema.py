@@ -14,6 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 CREDS_PATH = ROOT / "supabase_creds.txt"
 SQL_PATH = ROOT / "supabase" / "migrations" / "002_create_openforum_public_schema.sql"
 PUBLIC_TABLES = ("profiles", "articles", "bookmarks", "likes", "comments", "follows")
+COMMENT_MODERATION_COLUMNS = ("is_hidden", "hidden_at", "hidden_by")
+COMMENT_MODERATION_INDEX = "idx_comments_visible_article_id"
+PROFILE_HEADLINE_COLUMN = "headline"
 
 
 def read_creds() -> dict[str, str]:
@@ -113,11 +116,103 @@ def main() -> int:
             )
             policies = dict(cur.fetchall())
 
+            cur.execute(
+                """
+                select column_name
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = 'comments'
+                  and column_name = any(%s)
+                order by column_name
+                """,
+                (list(COMMENT_MODERATION_COLUMNS),),
+            )
+            moderation_columns = [row[0] for row in cur.fetchall()]
+
+            cur.execute(
+                """
+                select exists (
+                  select 1
+                  from information_schema.columns
+                  where table_schema = 'public'
+                    and table_name = 'articles'
+                    and column_name = 'subtitle'
+                )
+                """
+            )
+            has_article_subtitle = bool(cur.fetchone()[0])
+
+            cur.execute(
+                """
+                select exists (
+                  select 1
+                  from information_schema.columns
+                  where table_schema = 'public'
+                    and table_name = 'profiles'
+                    and column_name = %s
+                )
+                """,
+                (PROFILE_HEADLINE_COLUMN,),
+            )
+            has_profile_headline = bool(cur.fetchone()[0])
+
+            cur.execute(
+                """
+                select exists (
+                  select 1
+                  from pg_indexes
+                  where schemaname = 'public'
+                    and tablename = 'comments'
+                    and indexname = %s
+                )
+                """,
+                (COMMENT_MODERATION_INDEX,),
+            )
+            has_moderation_index = bool(cur.fetchone()[0])
+
+            cur.execute(
+                """
+                SELECT
+                  a.id,
+                  a.slug,
+                  a.title,
+                  a.excerpt,
+                  a.body,
+                  a.content_gdoc_id,
+                  a.tags,
+                  a.status,
+                  a.created_at,
+                  a.updated_at,
+                  a.views,
+                  a.cover_image_url,
+                  a.category_name,
+                  a.author_id,
+                  coalesce(
+                    nullif(trim(p.display_name), ''),
+                    nullif(trim(p.username), ''),
+                    nullif(split_part(p.email, '@', 1), ''),
+                    'Unknown Author'
+                  ) as author_name,
+                  p.avatar_url as author_avatar_url
+                FROM articles a
+                LEFT JOIN profiles p ON p.id = a.author_id
+                WHERE lower(a.status) IN ('published', 'draft')
+                ORDER BY a.created_at DESC
+                LIMIT 1
+                """
+            )
+            article_contract_rows = len(cur.fetchall())
+
     print("Created/verified tables: " + ", ".join(tables))
     print(
         "RLS policies: "
         + ", ".join(f"{table}={policies.get(table, 0)}" for table in PUBLIC_TABLES)
     )
+    print("Comment moderation columns: " + ", ".join(moderation_columns))
+    print(f"Profile headline column: profiles.{PROFILE_HEADLINE_COLUMN}={has_profile_headline}")
+    print(f"Article subtitle column: articles.subtitle={has_article_subtitle}")
+    print(f"Comment moderation index: {COMMENT_MODERATION_INDEX}={has_moderation_index}")
+    print(f"Article list contract query: ok rows={article_contract_rows}")
     return 0
 
 

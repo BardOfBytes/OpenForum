@@ -23,6 +23,25 @@ pub struct Author {
     pub id: Uuid,
     pub name: String,
     pub avatar_url: Option<String>,
+    pub username: Option<String>,
+    pub headline: Option<String>,
+    pub bio: Option<String>,
+    pub articles_published: u32,
+    pub total_views: u32,
+}
+
+/// Public contributor summary for About/contributors surfaces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthorSummary {
+    pub id: Uuid,
+    pub name: String,
+    pub username: Option<String>,
+    pub avatar_url: Option<String>,
+    pub headline: Option<String>,
+    pub bio: Option<String>,
+    pub articles_published: u32,
+    pub total_views: u32,
+    pub follower_count: u32,
 }
 
 /// Full article record — used for detail pages.
@@ -31,6 +50,7 @@ pub struct Article {
     pub id: Uuid,
     pub slug: String,
     pub title: String,
+    pub subtitle: String,
     pub excerpt: String,
     pub content_gdoc_id: Option<String>,
     pub author_id: Uuid,
@@ -62,6 +82,7 @@ pub struct ArticlePreview {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub views: u32,
+    pub featured: bool,
 
     // Virtual fields joined at runtime
     pub cover_image_url: Option<String>,
@@ -75,6 +96,8 @@ pub struct ArticlePreview {
 #[derive(Debug, Deserialize)]
 pub struct NewArticle {
     pub title: String,
+    #[serde(default)]
+    pub subtitle: String,
     pub body: String,
     pub excerpt: String,
     pub content_gdoc_id: Option<String>,
@@ -92,6 +115,10 @@ pub struct ArticleListQuery {
     pub page: Option<u32>,
     /// Items per page (default: 12, max: 50).
     pub per_page: Option<u32>,
+    /// Search article title, excerpt, body, or author name (optional).
+    pub q: Option<String>,
+    /// Filter by author UUID (optional).
+    pub author: Option<Uuid>,
 }
 
 impl ArticleListQuery {
@@ -122,6 +149,7 @@ impl From<&Article> for ArticlePreview {
             created_at: article.created_at,
             updated_at: article.updated_at,
             views: article.views,
+            featured: false,
 
             cover_image_url: article.cover_image_url.clone(),
             preview_image_url,
@@ -133,6 +161,11 @@ impl From<&Article> for ArticlePreview {
                 id: article.author_id,
                 name: "Unknown Author".to_string(),
                 avatar_url: None,
+                username: None,
+                headline: None,
+                bio: None,
+                articles_published: 0,
+                total_views: 0,
             }),
             read_time_minutes: article.read_time_minutes,
         }

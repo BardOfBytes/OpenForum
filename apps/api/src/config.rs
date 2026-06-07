@@ -31,6 +31,8 @@ pub struct AppConfig {
     pub redis_url: String,
     /// Redis auth token.
     pub redis_token: String,
+    /// Whether the API should run embedded SQLx migrations at startup.
+    pub run_api_migrations: bool,
 }
 
 impl AppConfig {
@@ -55,6 +57,9 @@ impl AppConfig {
             required_env_with_fallback(&["UPSTASH_REDIS_URL", "UPSTASH_REDIS_REST_URL"])?;
         let redis_token =
             required_env_with_fallback(&["UPSTASH_REDIS_TOKEN", "UPSTASH_REDIS_REST_TOKEN"])?;
+        let run_api_migrations = optional_env("OPENFORUM_RUN_API_MIGRATIONS")
+            .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
+            .unwrap_or(false);
 
         Ok(Self {
             port,
@@ -64,6 +69,7 @@ impl AppConfig {
             cloudinary,
             redis_url,
             redis_token,
+            run_api_migrations,
         })
     }
 }

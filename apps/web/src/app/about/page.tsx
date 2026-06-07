@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
-import { EditorialInfoPage } from "@/components/pages/EditorialInfoPage";
-import { ROUTES } from "@/lib/routes";
+import { AboutExperience } from "@/components/pages/AboutExperience";
+import { getArticlesPage, type ArticleListItem } from "@/lib/api/articles";
+import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
+import { getAuthors, type AuthorSummary } from "@/lib/api/users";
+import { CATEGORY_CATALOG } from "@/lib/categories";
 
 export const metadata: Metadata = {
   title: "About",
@@ -10,38 +13,75 @@ export const metadata: Metadata = {
     "Learn how OpenForum works, what we publish, and how students can contribute responsibly.",
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  let articleCount = 0;
+  let notableArticles: ArticleListItem[] = [];
+  let contributors: AuthorSummary[] = [];
+
+  try {
+    const page = await getArticlesPage({ page: 1, perPage: 8 });
+    articleCount = page.total;
+    notableArticles = page.data.slice(0, 2);
+  } catch (error) {
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[about] Failed to load article stats:", error);
+    }
+  }
+
+  try {
+    contributors = await getAuthors();
+  } catch (error) {
+    if (!(error instanceof ApiBuildTimeFetchSkippedError)) {
+      console.error("[about] Failed to load contributors:", error);
+    }
+  }
+
+  const authorCount =
+    contributors.length ||
+    new Set(notableArticles.map((article) => article.author.id ?? article.author.name)).size;
+  const visibleContributors =
+    contributors.length > 0 ? contributors : contributorsFromArticles(notableArticles);
+
   return (
     <>
       <Navbar />
-      <EditorialInfoPage
-        eyebrow="OpenForum"
-        title="A student newsroom built for honest campus conversations."
-        description="OpenForum is where CSVTU students report, analyze, and publish stories that matter to their peers."
-        primaryAction={{ href: ROUTES.write, label: "Write for OpenForum" }}
-        secondaryAction={{ href: ROUTES.guidelines, label: "Read guidelines" }}
-        sections={[
-          {
-            title: "Student voices first",
-            body: "The platform is designed for campus reporting, essays, interviews, technical explainers, and opinion pieces from students who want to contribute in public.",
-          },
-          {
-            title: "Editorial standards without gatekeeping",
-            body: "OpenForum encourages clarity, evidence, and fair framing. The goal is not to flatten strong opinions, but to make them responsible and readable.",
-          },
-          {
-            title: "A public archive for campus thinking",
-            body: "Published work stays accessible so future students can understand what people discussed, questioned, built, and challenged.",
-          },
-        ]}
-        closing={{
-          title: "Good campus writing starts with a useful question.",
-          body: "Pitch an idea, document a problem, explain a project, or publish an informed take. If it helps students understand their world better, it belongs here.",
-          primaryAction: { href: ROUTES.write, label: "Start writing" },
-          secondaryAction: { href: ROUTES.articles, label: "Read latest stories" },
-        }}
+      <AboutExperience
+        articleCount={articleCount}
+        authorCount={authorCount}
+        categoryCount={CATEGORY_CATALOG.length}
+        notableArticles={notableArticles}
+        contributors={visibleContributors}
       />
       <Footer />
     </>
   );
+}
+
+function contributorsFromArticles(articles: ArticleListItem[]): AuthorSummary[] {
+  const authors = new Map<string, AuthorSummary>();
+
+  for (const article of articles) {
+    const key = article.author.id ?? article.author.name;
+    const existing = authors.get(key);
+
+    if (existing) {
+      existing.articlesPublished += 1;
+      existing.totalViews += article.views;
+      continue;
+    }
+
+    authors.set(key, {
+      id: article.author.id ?? key,
+      name: article.author.name,
+      username: article.author.username ?? null,
+      avatarUrl: article.author.avatarUrl,
+      headline: article.author.headline ?? null,
+      bio: article.author.bio ?? null,
+      articlesPublished: 1,
+      totalViews: article.views,
+      followerCount: 0,
+    });
+  }
+
+  return Array.from(authors.values()).slice(0, 3);
 }
