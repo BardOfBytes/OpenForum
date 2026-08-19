@@ -30,7 +30,14 @@ export const metadata: Metadata = {
   },
 };
 
-export const dynamic = "force-dynamic";
+// Revalidate rather than force-dynamic. This page reads no cookies, headers,
+// or searchParams, so nothing about it is request-scoped.
+//
+// force-dynamic also opted the route out of prefetching: Next only prefetches
+// a dynamic route's loading.tsx shell, so hovering a link to this page fetched
+// ~100 bytes of routing metadata instead of the ~22KB payload a static route
+// returns. The whole render then happened after the click, with no UI feedback.
+export const revalidate = 60;
 
 /* ─────────────────────────────────────────────────────────────
    DATA TYPES

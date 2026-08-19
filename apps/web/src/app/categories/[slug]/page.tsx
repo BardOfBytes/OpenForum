@@ -5,9 +5,18 @@ import { Footer } from "@/components/layout/Footer";
 import { CategoryFeedExperience } from "@/components/categories/CategoryFeedExperience";
 import { getArticles, type ArticleListItem } from "@/lib/api/articles";
 import { ApiBuildTimeFetchSkippedError } from "@/lib/api/base-url";
-import { getCategoryBySlug } from "@/lib/categories";
+import { CATEGORY_CATALOG, getCategoryBySlug } from "@/lib/categories";
 
-export const dynamic = "force-dynamic";
+// No request-scoped data here either — revalidate instead of force-dynamic so
+// the route stays prefetchable. See the note in src/app/page.tsx.
+export const revalidate = 60;
+
+// The category catalog is a fixed list, so every category page can be
+// prerendered at build time. Without this, a dynamic segment has nothing to
+// prefetch and no prerendered HTML, so each visit paid a full server render.
+export function generateStaticParams() {
+  return CATEGORY_CATALOG.map((category) => ({ slug: category.slug }));
+}
 
 interface CategoryPageProps {
   params: Promise<{ slug: string }>;
