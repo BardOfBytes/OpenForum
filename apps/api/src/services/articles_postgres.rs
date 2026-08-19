@@ -685,12 +685,19 @@ impl PostgresArticlesService {
         Ok(deleted)
     }
 
+    /// Increment an article's view counter.
+    ///
+    /// Deliberately does **not** touch `updated_at` (that column means "last
+    /// edited", not "last read") and deliberately does **not** invalidate any
+    /// cache. A view is a read, and invalidating on reads meant every page
+    /// view wiped the entire article cache via a keyspace `SCAN` — so the
+    /// cache never served a hit under traffic and every read cost a full scan.
+    /// View counts are allowed to lag by one cache TTL instead.
     pub async fn update_post_views(&self, slug: &str) -> Result<()> {
         let result = sqlx::query(
             r#"
             UPDATE articles
-            SET views = views + 1,
-                updated_at = now()
+            SET views = views + 1
             WHERE slug = $1
             "#,
         )
@@ -704,11 +711,6 @@ impl PostgresArticlesService {
             bail!("Post with slug '{}' not found in postgres", slug);
         }
 
-        let _ = self
-            .cache
-            .invalidate(&crate::services::cache::keys::article_by_slug(slug))
-            .await;
-        let _ = self.cache.invalidate_articles().await;
         Ok(())
     }
 

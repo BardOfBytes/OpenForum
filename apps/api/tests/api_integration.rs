@@ -31,8 +31,9 @@ fn test_config() -> AppConfig {
             api_secret: "test".to_string(),
             upload_folder: Some("tests".to_string()),
         },
-        redis_url: "redis://127.0.0.1:6379".to_string(),
-        redis_token: "unused".to_string(),
+        // Tests run against the no-op cache; no Redis is contacted.
+        redis_url: None,
+        redis_token: None,
         run_api_migrations: false,
     }
 }

@@ -36,8 +36,33 @@ async fn main() -> anyhow::Result<()> {
         "Configuration loaded"
     );
 
-    let cache = CacheService::new(config.redis_url.clone(), config.redis_token.clone())
-        .context("Failed to initialize Redis cache service")?;
+    // Redis is optional. If it is unconfigured or its URL is malformed, run
+    // with caching and rate limiting disabled rather than refusing to boot —
+    // a dead cache should degrade performance, not take the site down.
+    let cache = match config.redis_url.clone() {
+        Some(url) => {
+            let token = config.redis_token.clone().unwrap_or_default();
+            match CacheService::new(url, token) {
+                Ok(cache) => {
+                    tracing::info!("Redis cache enabled");
+                    cache
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        "Redis URL is invalid; continuing with caching and rate limiting disabled"
+                    );
+                    CacheService::disabled()
+                }
+            }
+        }
+        None => {
+            tracing::warn!(
+                "No UPSTASH_REDIS_URL configured; caching and rate limiting are disabled"
+            );
+            CacheService::disabled()
+        }
+    };
 
     let mut connect_options = PgConnectOptions::from_str(&config.database_url)
         .context("Failed to parse Postgres DATABASE_URL")?;

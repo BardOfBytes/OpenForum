@@ -22,15 +22,18 @@ Cargo.lock
 # ========================
 # Environment variables
 # ========================
-.env
-.env.local
-.env.*.local
+# Ignore every .env variant (including backups such as .env.backup-20260101,
+# .env.prod, .env.save) and re-admit only the tracked templates. The previous
+# rules listed exact names, so an ad-hoc backup of a real .env was left
+# untracked-but-visible and one `git add -A` away from being committed.
+.env*
 !.env.example
+!.env*.example
 Render.env
-supabase_creds.txt
-new_supabase_creds.txt
-*_creds.txt
-*creds.txt
+*.env.backup*
+*creds*.txt
+*credentials*.json
+*service-account*.json
 
 # ========================
 # OS & Editor

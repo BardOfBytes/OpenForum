@@ -1,9 +1,20 @@
 //! Redis cache-aside helpers.
+//!
+//! The cache is a best-effort optimization, never a hard dependency. When Redis
+//! is unconfigured or unreachable the service degrades to a no-op: reads miss,
+//! writes are dropped, and the rate limiter fails open. The API stays usable.
+//!
+//! Connections are managed by a single shared [`ConnectionManager`], which
+//! multiplexes commands over one connection and transparently reconnects after
+//! a drop. Credentials are carried in the connection URL so that reconnects
+//! re-authenticate automatically.
 
-use anyhow::{Context, Result, bail};
-use redis::aio::MultiplexedConnection;
+use anyhow::{Context, Result};
+use redis::aio::ConnectionManager;
 use serde::{Serialize, de::DeserializeOwned};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::OnceCell;
 
 /// Cache key prefixes to avoid collisions.
 pub mod keys {
@@ -48,90 +59,91 @@ pub mod ttl {
     pub const USER_PROFILE: Duration = Duration::from_secs(600);
 }
 
-/// Cache service wrapping a Redis connection.
+struct CacheInner {
+    client: redis::Client,
+    /// Lazily established on first use. `get_or_try_init` does not cache
+    /// failures, so a Redis outage at startup is retried on the next request
+    /// rather than disabling the cache for the process lifetime.
+    manager: OnceCell<ConnectionManager>,
+}
+
+impl std::fmt::Debug for CacheInner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CacheInner")
+            .field("connected", &self.manager.initialized())
+            .finish()
+    }
+}
+
+/// Cache service wrapping a shared, self-healing Redis connection.
 #[derive(Debug, Clone)]
 pub struct CacheService {
-    client: Option<redis::Client>,
-    redis_token: String,
-    send_auth_command: bool,
-    disabled: bool,
+    /// `None` when caching is disabled (unconfigured Redis, or tests).
+    inner: Option<Arc<CacheInner>>,
 }
 
 impl CacheService {
-    /// Create a new CacheService.
+    /// Create a cache service from a Redis URL and optional auth token.
+    ///
+    /// Fails only when the URL is malformed. A URL pointing at an unreachable
+    /// server succeeds here and degrades at call time.
     pub fn new(redis_url: String, redis_token: String) -> Result<Self> {
         let normalized_url = normalize_redis_url(&redis_url, &redis_token)?;
-        let send_auth_command = !redis_url_has_credentials(&normalized_url);
 
-        let client = redis::Client::open(normalized_url.as_str())
-            .with_context(|| format!("Failed to open Redis client for URL '{normalized_url}'"))?;
+        let client = redis::Client::open(normalized_url.as_str()).with_context(|| {
+            format!(
+                "Failed to open Redis client for host '{}'",
+                redacted_host(&normalized_url)
+            )
+        })?;
 
         Ok(Self {
-            client: Some(client),
-            redis_token,
-            send_auth_command,
-            disabled: false,
+            inner: Some(Arc::new(CacheInner {
+                client,
+                manager: OnceCell::new(),
+            })),
         })
+    }
+
+    /// Create a no-op cache service.
+    ///
+    /// Used for tests and whenever Redis is not configured.
+    pub fn disabled() -> Self {
+        Self { inner: None }
     }
 
     /// Create a no-op cache service for tests.
     pub fn for_tests() -> Self {
-        Self {
-            client: None,
-            redis_token: String::new(),
-            send_auth_command: false,
-            disabled: true,
-        }
+        Self::disabled()
     }
 
-    async fn connection(&self) -> Result<MultiplexedConnection> {
-        if self.disabled {
-            bail!("CacheService is disabled for tests");
-        }
+    /// Whether this service will actually talk to Redis.
+    pub fn is_enabled(&self) -> bool {
+        self.inner.is_some()
+    }
 
-        let client = self
-            .client
+    /// Borrow the shared connection, establishing it on first use.
+    ///
+    /// `ConnectionManager` is cheap to clone — clones share one multiplexed
+    /// connection and one reconnect state machine.
+    async fn connection(&self) -> Result<ConnectionManager> {
+        let inner = self
+            .inner
             .as_ref()
-            .context("Redis client is not initialized")?;
-        let mut conn = client
-            .get_multiplexed_tokio_connection()
+            .context("Redis cache is disabled; no connection available")?;
+
+        let manager = inner
+            .manager
+            .get_or_try_init(|| ConnectionManager::new(inner.client.clone()))
             .await
-            .context("Failed to connect to Redis")?;
+            .context("Failed to establish Redis connection")?;
 
-        if self.send_auth_command {
-            // Allow local Redis instances with no password while still supporting token auth.
-            let auth_result: redis::RedisResult<()> = redis::cmd("AUTH")
-                .arg(&self.redis_token)
-                .query_async(&mut conn)
-                .await;
-
-            if let Err(single_arg_error) = auth_result {
-                let message = single_arg_error.to_string();
-                if !message.contains("no password is set")
-                    && !message.contains("AUTH called without any password configured")
-                {
-                    // Some providers require AUTH username password form.
-                    let dual_arg_result: redis::RedisResult<()> = redis::cmd("AUTH")
-                        .arg("default")
-                        .arg(&self.redis_token)
-                        .query_async(&mut conn)
-                        .await;
-
-                    if let Err(dual_arg_error) = dual_arg_result {
-                        return Err(dual_arg_error).context(format!(
-                            "Redis AUTH failed (single-arg error: {single_arg_error})"
-                        ));
-                    }
-                }
-            }
-        }
-
-        Ok(conn)
+        Ok(manager.clone())
     }
 
     /// Get a value from the cache, deserializing from JSON.
     pub async fn get<T: DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
-        if self.disabled {
+        if self.inner.is_none() {
             return Ok(None);
         }
 
@@ -154,7 +166,7 @@ impl CacheService {
 
     /// Set a value in the cache with a TTL, serializing to JSON.
     pub async fn set<T: Serialize>(&self, key: &str, value: &T, ttl: Duration) -> Result<()> {
-        if self.disabled {
+        if self.inner.is_none() {
             return Ok(());
         }
 
@@ -175,7 +187,7 @@ impl CacheService {
 
     /// Delete a key from the cache (for cache invalidation).
     pub async fn invalidate(&self, key: &str) -> Result<()> {
-        if self.disabled {
+        if self.inner.is_none() {
             return Ok(());
         }
 
@@ -190,32 +202,37 @@ impl CacheService {
 
     /// Increment a counter key and apply TTL on first write.
     pub async fn increment_with_ttl(&self, key: &str, ttl: Duration) -> Result<u64> {
-        if self.disabled {
+        if self.inner.is_none() {
             return Ok(0);
         }
 
         let mut conn = self.connection().await?;
-        let count: u64 = redis::cmd("INCR")
+
+        // Pipeline INCR + EXPIRE so the counter can never outlive its window
+        // if the process dies between the two commands, and so each rate-limit
+        // check costs one round trip instead of two.
+        let (count,): (u64,) = redis::pipe()
+            .atomic()
+            .cmd("INCR")
             .arg(key)
+            .cmd("EXPIRE")
+            .arg(key)
+            .arg(ttl.as_secs())
+            .arg("NX")
+            .ignore()
             .query_async(&mut conn)
             .await
             .with_context(|| format!("Redis INCR failed for key '{key}'"))?;
-
-        if count == 1 {
-            redis::cmd("EXPIRE")
-                .arg(key)
-                .arg(ttl.as_secs())
-                .query_async::<()>(&mut conn)
-                .await
-                .with_context(|| format!("Redis EXPIRE failed for key '{key}'"))?;
-        }
 
         Ok(count)
     }
 
     /// Invalidate all article caches (e.g., after creating or editing an article).
+    ///
+    /// Uses `SCAN` rather than `KEYS` so it never blocks the server, but it is
+    /// still O(keyspace) — call it on writes only, never on reads.
     pub async fn invalidate_articles(&self) -> Result<()> {
-        if self.disabled {
+        if self.inner.is_none() {
             return Ok(());
         }
 
@@ -251,13 +268,22 @@ impl CacheService {
     }
 }
 
+/// Normalize a Redis URL into a form `redis-rs` can connect with.
+///
+/// Handles the three shapes that show up in practice:
+/// - Upstash REST URLs (`https://…`) are rewritten to `rediss://…:6379`.
+/// - Upstash native URLs are forced onto TLS.
+/// - A token is folded into the URL as credentials when the URL has none, so
+///   that `ConnectionManager` re-authenticates on every reconnect.
 fn normalize_redis_url(redis_url: &str, redis_token: &str) -> Result<String> {
     let mut normalized = redis_url.trim().to_string();
+    let token = redis_token.trim();
 
     if normalized.starts_with("http://") || normalized.starts_with("https://") {
         let parsed = reqwest::Url::parse(&normalized)
-            .with_context(|| format!("Invalid Redis URL format: '{redis_url}'"))?;
+            .with_context(|| format!("Invalid Redis URL format: '{}'", redacted_host(redis_url)))?;
         let host = parsed.host_str().context("Redis URL is missing a host")?;
+        // Upstash REST URLs carry no port; their native endpoint is 6379.
         let port = parsed.port().unwrap_or(6379);
         let scheme = if parsed.scheme() == "https" {
             "rediss"
@@ -267,18 +293,20 @@ fn normalize_redis_url(redis_url: &str, redis_token: &str) -> Result<String> {
         normalized = format!("{scheme}://{host}:{port}");
     }
 
-    let is_upstash = normalized.contains(".upstash.io");
-
-    if is_upstash && normalized.starts_with("redis://") {
+    if normalized.contains(".upstash.io") && normalized.starts_with("redis://") {
+        // Upstash refuses plaintext connections.
         normalized = normalized.replacen("redis://", "rediss://", 1);
     }
 
-    if is_upstash && !redis_url_has_credentials(&normalized) {
+    // Fold the token in as credentials. Carrying auth in the URL (rather than
+    // issuing an AUTH command after connecting) is what makes reconnects work:
+    // a manually issued AUTH is lost the moment the connection drops.
+    if !token.is_empty() && !redis_url_has_credentials(&normalized) {
         let scheme_end = normalized
             .find("://")
             .context("Redis URL is missing a scheme separator")?
             + 3;
-        normalized.insert_str(scheme_end, &format!("default:{redis_token}@"));
+        normalized.insert_str(scheme_end, &format!("default:{token}@"));
     }
 
     Ok(normalized)
@@ -294,4 +322,66 @@ fn redis_url_has_credentials(redis_url: &str) -> bool {
         .next()
         .unwrap_or(authority_and_path);
     authority.contains('@')
+}
+
+/// Extract just the host for logging, so credentials never reach the logs.
+fn redacted_host(redis_url: &str) -> String {
+    let after_scheme = redis_url
+        .find("://")
+        .map(|i| &redis_url[(i + 3)..])
+        .unwrap_or(redis_url);
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    authority
+        .rsplit('@')
+        .next()
+        .unwrap_or(authority)
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewrites_upstash_rest_url_to_native_tls() {
+        let url = normalize_redis_url("https://example.upstash.io", "tok").unwrap();
+        assert_eq!(url, "rediss://default:tok@example.upstash.io:6379");
+    }
+
+    #[test]
+    fn forces_tls_for_upstash_plaintext_url() {
+        let url = normalize_redis_url("redis://example.upstash.io:6379", "tok").unwrap();
+        assert_eq!(url, "rediss://default:tok@example.upstash.io:6379");
+    }
+
+    #[test]
+    fn preserves_existing_credentials() {
+        let url =
+            normalize_redis_url("rediss://default:already@example.upstash.io:6379", "tok").unwrap();
+        assert_eq!(url, "rediss://default:already@example.upstash.io:6379");
+    }
+
+    #[test]
+    fn leaves_passwordless_local_redis_untouched() {
+        let url = normalize_redis_url("redis://localhost:6379", "").unwrap();
+        assert_eq!(url, "redis://localhost:6379");
+    }
+
+    #[test]
+    fn redacted_host_strips_credentials() {
+        assert_eq!(
+            redacted_host("rediss://default:supersecret@example.upstash.io:6379"),
+            "example.upstash.io:6379"
+        );
+        assert_eq!(redacted_host("redis://localhost:6379"), "localhost:6379");
+    }
+
+    #[test]
+    fn disabled_cache_is_a_no_op() {
+        let cache = CacheService::disabled();
+        assert!(!cache.is_enabled());
+    }
 }

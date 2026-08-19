@@ -27,10 +27,10 @@ pub struct AppConfig {
     pub database_url: String,
     /// Cloudinary configuration.
     pub cloudinary: CloudinaryConfig,
-    /// Redis connection URL.
-    pub redis_url: String,
-    /// Redis auth token.
-    pub redis_token: String,
+    /// Redis connection URL. `None` disables caching and rate limiting.
+    pub redis_url: Option<String>,
+    /// Redis auth token. `None` for servers that need no password.
+    pub redis_token: Option<String>,
     /// Whether the API should run embedded SQLx migrations at startup.
     pub run_api_migrations: bool,
 }
@@ -53,10 +53,13 @@ impl AppConfig {
             upload_folder: optional_env("CLOUDINARY_UPLOAD_FOLDER"),
         };
 
+        // Redis is a best-effort cache and rate-limit backend, not a hard
+        // dependency. A missing or dead Redis must never stop the API from
+        // serving articles, so these are optional and the service degrades.
         let redis_url =
-            required_env_with_fallback(&["UPSTASH_REDIS_URL", "UPSTASH_REDIS_REST_URL"])?;
+            optional_env_with_fallback(&["UPSTASH_REDIS_URL", "UPSTASH_REDIS_REST_URL"]);
         let redis_token =
-            required_env_with_fallback(&["UPSTASH_REDIS_TOKEN", "UPSTASH_REDIS_REST_TOKEN"])?;
+            optional_env_with_fallback(&["UPSTASH_REDIS_TOKEN", "UPSTASH_REDIS_REST_TOKEN"]);
         let run_api_migrations = optional_env("OPENFORUM_RUN_API_MIGRATIONS")
             .map(|value| value.eq_ignore_ascii_case("true") || value == "1")
             .unwrap_or(false);
@@ -89,14 +92,6 @@ fn required_env(key: &str) -> Result<String> {
     Ok(value)
 }
 
-fn required_env_with_fallback(keys: &[&str]) -> Result<String> {
-    for key in keys {
-        if let Ok(value) = env::var(key)
-            && !value.trim().is_empty()
-        {
-            return Ok(value);
-        }
-    }
-
-    bail!("Missing required env var. Set one of: {}", keys.join(", "))
+fn optional_env_with_fallback(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| optional_env(key))
 }

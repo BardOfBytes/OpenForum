@@ -12,8 +12,11 @@ services:
     environment:
       - PORT=8080
       - NEXT_PUBLIC_FRONTEND_URL=http://localhost:3000
+      # Local Redis runs without a password. Leave the token unset — a
+      # non-empty token is folded into the connection URL as credentials,
+      # which a passwordless server rejects.
       - UPSTASH_REDIS_URL=redis://redis:6379
-      - UPSTASH_REDIS_TOKEN=local-dev-token
+      - UPSTASH_REDIS_TOKEN=
     depends_on:
       - redis
 
