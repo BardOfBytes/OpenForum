@@ -15,6 +15,55 @@ use crate::models::article::{
 
 use super::articles_postgres::PostgresArticlesService;
 
+/// Who is asking for articles, which decides whether unpublished work is
+/// visible.
+///
+/// Drafts must never reach the public. The API connects to Postgres as an
+/// owner role and therefore bypasses RLS entirely, so this is the only thing
+/// standing between an unpublished article and an anonymous reader — it is not
+/// a convenience filter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArticleAudience {
+    /// Anonymous visitors and signed-in readers: published articles only.
+    Public,
+    /// A signed-in user: published articles, plus their own drafts.
+    Author(Uuid),
+    /// Editor or admin: everything, for moderation.
+    Moderator,
+}
+
+impl ArticleAudience {
+    /// The author whose drafts this audience may additionally see.
+    pub fn draft_owner(self) -> Option<Uuid> {
+        match self {
+            Self::Author(user_id) => Some(user_id),
+            Self::Public | Self::Moderator => None,
+        }
+    }
+
+    /// Whether this audience may see every article regardless of status.
+    pub fn sees_all_drafts(self) -> bool {
+        matches!(self, Self::Moderator)
+    }
+
+    /// Only public results are cacheable.
+    ///
+    /// Author and moderator responses contain unpublished rows; caching them
+    /// under the shared article keys would serve drafts to the next anonymous
+    /// reader that hits the same key.
+    pub fn is_cacheable(self) -> bool {
+        matches!(self, Self::Public)
+    }
+
+    /// Whether an already-loaded article is visible to this audience.
+    pub fn can_view(self, status: &str, author_id: Uuid) -> bool {
+        if status.eq_ignore_ascii_case("published") || self.sees_all_drafts() {
+            return true;
+        }
+        self.draft_owner() == Some(author_id)
+    }
+}
+
 #[derive(Clone)]
 pub enum ArticlesService {
     Postgres(Arc<PostgresArticlesService>),
@@ -37,11 +86,12 @@ impl ArticlesService {
         category: Option<&str>,
         search: Option<&str>,
         author: Option<Uuid>,
+        audience: ArticleAudience,
     ) -> Result<Vec<ArticlePreview>> {
         match self {
             Self::Postgres(service) => {
                 service
-                    .get_posts(limit, offset, category, search, author)
+                    .get_posts(limit, offset, category, search, author, audience)
                     .await
             }
             Self::InMemory(state) => {
@@ -49,6 +99,7 @@ impl ArticlesService {
                 let previews = state
                     .articles
                     .iter()
+                    .filter(|article| audience.can_view(&article.status, article.author_id))
                     .filter(|article| article_matches_filters(article, category, search, author))
                     .skip(offset)
                     .take(limit)
@@ -64,29 +115,40 @@ impl ArticlesService {
         category: Option<&str>,
         search: Option<&str>,
         author: Option<Uuid>,
+        audience: ArticleAudience,
     ) -> Result<u32> {
         match self {
-            Self::Postgres(service) => service.count_posts(category, search, author).await,
+            Self::Postgres(service) => {
+                service
+                    .count_posts(category, search, author, audience)
+                    .await
+            }
             Self::InMemory(state) => {
                 let state = state.lock().expect("in-memory articles mutex poisoned");
                 Ok(state
                     .articles
                     .iter()
+                    .filter(|article| audience.can_view(&article.status, article.author_id))
                     .filter(|article| article_matches_filters(article, category, search, author))
                     .count() as u32)
             }
         }
     }
 
-    pub async fn get_post_by_slug(&self, slug: &str) -> Result<Option<Article>> {
+    pub async fn get_post_by_slug(
+        &self,
+        slug: &str,
+        audience: ArticleAudience,
+    ) -> Result<Option<Article>> {
         match self {
-            Self::Postgres(service) => service.get_post_by_slug(slug).await,
+            Self::Postgres(service) => service.get_post_by_slug(slug, audience).await,
             Self::InMemory(state) => {
                 let state = state.lock().expect("in-memory articles mutex poisoned");
                 Ok(state
                     .articles
                     .iter()
                     .find(|article| article.slug == slug)
+                    .filter(|article| audience.can_view(&article.status, article.author_id))
                     .cloned())
             }
         }

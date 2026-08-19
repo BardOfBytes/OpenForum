@@ -14,7 +14,9 @@ use crate::middleware::auth::{AuthUser, OptionalAuthUser, UserRole};
 use crate::models::article::{
     Article, ArticleListQuery, ArticlePreview, Author, AuthorSummary, Category, NewArticle,
 };
-use crate::services::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
+use crate::services::articles::{
+    ArticleAudience, ArticleSocialState, Comment, SocialState, UpdateArticle,
+};
 use crate::state::AppState;
 
 const YOUTUBE_EMBED_HOSTS: &[&str] = &[
@@ -60,6 +62,7 @@ fn can_moderate_comments(user: &AuthUser) -> bool {
 
 async fn list_articles(
     State(state): State<AppState>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
     Query(query): Query<ArticleListQuery>,
 ) -> Result<Json<PaginatedResponse<ArticlePreview>>, (StatusCode, Json<ErrorResponse>)> {
     let page = query.page();
@@ -68,6 +71,7 @@ async fn list_articles(
     let category = query.category.clone();
     let search = query.q.clone();
     let author = query.author;
+    let audience = audience_for(viewer.as_ref());
 
     let (data_result, total_result) = tokio::join!(
         state.articles.get_posts(
@@ -76,10 +80,11 @@ async fn list_articles(
             category.as_deref(),
             search.as_deref(),
             author,
+            audience,
         ),
         state
             .articles
-            .count_posts(category.as_deref(), search.as_deref(), author)
+            .count_posts(category.as_deref(), search.as_deref(), author, audience)
     );
 
     let data = data_result.map_err(|error| {
@@ -114,6 +119,7 @@ async fn list_articles(
 
 async fn list_user_articles(
     State(state): State<AppState>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
     Path(author_id): Path<Uuid>,
     Query(query): Query<ArticleListQuery>,
 ) -> Result<Json<PaginatedResponse<ArticlePreview>>, (StatusCode, Json<ErrorResponse>)> {
@@ -123,6 +129,8 @@ async fn list_user_articles(
     let category = query.category.clone();
     let search = query.q.clone();
 
+    let audience = audience_for(viewer.as_ref());
+
     let (data_result, total_result) = tokio::join!(
         state.articles.get_posts(
             per_page as usize,
@@ -130,10 +138,14 @@ async fn list_user_articles(
             category.as_deref(),
             search.as_deref(),
             Some(author_id),
+            audience,
         ),
-        state
-            .articles
-            .count_posts(category.as_deref(), search.as_deref(), Some(author_id))
+        state.articles.count_posts(
+            category.as_deref(),
+            search.as_deref(),
+            Some(author_id),
+            audience
+        )
     );
 
     let data = data_result.map_err(|error| {
@@ -670,13 +682,29 @@ async fn unfollow_user(
         })
 }
 
+/// Map an optional caller to the set of articles they are allowed to see.
+///
+/// Anonymous callers and ordinary signed-in readers get published articles
+/// only. A signed-in user additionally sees their own drafts. Editors and
+/// admins see everything, for moderation.
+fn audience_for(viewer: Option<&AuthUser>) -> ArticleAudience {
+    match viewer {
+        None => ArticleAudience::Public,
+        Some(user) if matches!(user.role, UserRole::Editor | UserRole::Admin) => {
+            ArticleAudience::Moderator
+        }
+        Some(user) => ArticleAudience::Author(user.user_id),
+    }
+}
+
 async fn get_article(
     State(state): State<AppState>,
+    OptionalAuthUser(viewer): OptionalAuthUser,
     Path(slug): Path<String>,
 ) -> Result<Json<Article>, (StatusCode, Json<ErrorResponse>)> {
     let article = state
         .articles
-        .get_post_by_slug(&slug)
+        .get_post_by_slug(&slug, audience_for(viewer.as_ref()))
         .await
         .map_err(|error| {
             tracing::error!(

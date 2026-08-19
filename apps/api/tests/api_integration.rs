@@ -964,3 +964,188 @@ async fn cloudinary_upload_happy_path_returns_201() {
     let public_url = json["public_url"].as_str().expect("public_url");
     assert!(public_url.contains("/image/upload/f_auto/q_auto/"));
 }
+
+// ── Draft visibility ────────────────────────────────────────────
+//
+// Regression coverage for a leak in which the article feed explicitly
+// selected `lower(status) = 'draft'` alongside published rows, and the
+// detail query filtered on slug with no status predicate at all. Every
+// unpublished article was therefore readable by anonymous callers. RLS
+// does not help: the API connects to Postgres as an owner role and
+// bypasses policies, so these checks are the only control.
+
+/// Flip an article to draft status as its author.
+async fn set_article_to_draft(app: axum::Router, token: &str, slug: &str) {
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!("/api/v1/articles/{slug}"))
+                .method("PATCH")
+                .header("authorization", format!("Bearer {token}"))
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "status": "Draft" }).to_string()))
+                .expect("patch request"),
+        )
+        .await
+        .expect("patch response");
+
+    assert_eq!(response.status(), StatusCode::OK, "should switch to draft");
+}
+
+async fn get_article_as(app: axum::Router, slug: &str, token: Option<&str>) -> StatusCode {
+    let mut request = Request::builder()
+        .uri(format!("/api/v1/articles/{slug}"))
+        .method("GET");
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    app.oneshot(request.body(Body::empty()).expect("get request"))
+        .await
+        .expect("get response")
+        .status()
+}
+
+async fn list_slugs_as(app: axum::Router, token: Option<&str>) -> Vec<String> {
+    let mut request = Request::builder()
+        .uri("/api/v1/articles?per_page=50")
+        .method("GET");
+    if let Some(token) = token {
+        request = request.header("authorization", format!("Bearer {token}"));
+    }
+    let response = app
+        .oneshot(request.body(Body::empty()).expect("list request"))
+        .await
+        .expect("list response");
+    assert_eq!(response.status(), StatusCode::OK);
+
+    json_body(response).await["data"]
+        .as_array()
+        .expect("data array")
+        .iter()
+        .map(|item| item["slug"].as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn drafts_are_hidden_from_anonymous_readers() {
+    let state = app_state_with_test_services();
+    let author = test_auth_token_with_user_id(
+        "writer@students.csvtu.ac.in",
+        "00000000-0000-0000-0000-0000000000a1",
+    );
+
+    let article = create_test_article(
+        test_app(state.clone()),
+        &author,
+        "Unpublished Investigation",
+    )
+    .await;
+    let slug = article["slug"].as_str().expect("slug").to_string();
+
+    set_article_to_draft(test_app(state.clone()), &author, &slug).await;
+
+    // Anonymous: must not see the draft in the feed or by direct URL.
+    let anon_slugs = list_slugs_as(test_app(state.clone()), None).await;
+    assert!(
+        !anon_slugs.contains(&slug),
+        "anonymous feed must not contain the draft, got {anon_slugs:?}"
+    );
+    assert_eq!(
+        get_article_as(test_app(state.clone()), &slug, None).await,
+        StatusCode::NOT_FOUND,
+        "anonymous direct access to a draft must 404"
+    );
+}
+
+#[tokio::test]
+async fn drafts_are_hidden_from_other_signed_in_users() {
+    let state = app_state_with_test_services();
+    let author = test_auth_token_with_user_id(
+        "writer@students.csvtu.ac.in",
+        "00000000-0000-0000-0000-0000000000a1",
+    );
+    let stranger = test_auth_token_with_user_id(
+        "other@students.csvtu.ac.in",
+        "00000000-0000-0000-0000-0000000000b2",
+    );
+
+    let article = create_test_article(test_app(state.clone()), &author, "Embargoed Piece").await;
+    let slug = article["slug"].as_str().expect("slug").to_string();
+    set_article_to_draft(test_app(state.clone()), &author, &slug).await;
+
+    let stranger_slugs = list_slugs_as(test_app(state.clone()), Some(&stranger)).await;
+    assert!(
+        !stranger_slugs.contains(&slug),
+        "another user's feed must not contain the draft"
+    );
+    assert_eq!(
+        get_article_as(test_app(state.clone()), &slug, Some(&stranger)).await,
+        StatusCode::NOT_FOUND,
+        "another signed-in user must not read the draft"
+    );
+}
+
+#[tokio::test]
+async fn authors_and_moderators_can_still_see_drafts() {
+    let state = app_state_with_test_services();
+    let author = test_auth_token_with_user_id(
+        "writer@students.csvtu.ac.in",
+        "00000000-0000-0000-0000-0000000000a1",
+    );
+    let editor = test_auth_token_with_user_id_and_role(
+        "editor@csvtu.ac.in",
+        "00000000-0000-0000-0000-0000000000c3",
+        "editor",
+    );
+
+    let article = create_test_article(test_app(state.clone()), &author, "Work In Progress").await;
+    let slug = article["slug"].as_str().expect("slug").to_string();
+    set_article_to_draft(test_app(state.clone()), &author, &slug).await;
+
+    // The author keeps access to their own draft.
+    assert_eq!(
+        get_article_as(test_app(state.clone()), &slug, Some(&author)).await,
+        StatusCode::OK,
+        "author must still read their own draft"
+    );
+    assert!(
+        list_slugs_as(test_app(state.clone()), Some(&author))
+            .await
+            .contains(&slug),
+        "author's feed should include their own draft"
+    );
+
+    // Editors retain full visibility for moderation.
+    assert_eq!(
+        get_article_as(test_app(state.clone()), &slug, Some(&editor)).await,
+        StatusCode::OK,
+        "editor must retain moderation visibility"
+    );
+    assert!(
+        list_slugs_as(test_app(state.clone()), Some(&editor))
+            .await
+            .contains(&slug),
+        "editor's feed should include drafts"
+    );
+}
+
+#[tokio::test]
+async fn published_articles_remain_public() {
+    let state = app_state_with_test_services();
+    let author = test_auth_token("writer@students.csvtu.ac.in");
+
+    let article = create_test_article(test_app(state.clone()), &author, "Fully Public Story").await;
+    let slug = article["slug"].as_str().expect("slug").to_string();
+
+    assert_eq!(
+        get_article_as(test_app(state.clone()), &slug, None).await,
+        StatusCode::OK,
+        "published articles must stay readable by everyone"
+    );
+    assert!(
+        list_slugs_as(test_app(state.clone()), None)
+            .await
+            .contains(&slug),
+        "published articles must stay in the public feed"
+    );
+}

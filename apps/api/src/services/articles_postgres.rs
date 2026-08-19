@@ -10,7 +10,7 @@ use crate::models::article::{
     youtube_thumbnail_from_html,
 };
 
-use super::articles::{ArticleSocialState, Comment, SocialState, UpdateArticle};
+use super::articles::{ArticleAudience, ArticleSocialState, Comment, SocialState, UpdateArticle};
 
 #[derive(Debug, Clone)]
 pub struct PostgresArticlesService {
@@ -108,9 +108,13 @@ impl PostgresArticlesService {
         category: Option<&str>,
         search: Option<&str>,
         author: Option<Uuid>,
+        audience: ArticleAudience,
     ) -> Result<Vec<ArticlePreview>> {
         let search = search.map(str::trim).filter(|search| !search.is_empty());
-        let cache_key = if search.is_none() && author.is_none() {
+        // Only public listings may be cached — an author or moderator listing
+        // contains unpublished rows, and caching it under the shared article
+        // key would hand those drafts to the next anonymous reader.
+        let cache_key = if search.is_none() && author.is_none() && audience.is_cacheable() {
             Some(crate::services::cache::keys::article_list(
                 offset as u32,
                 limit as u32,
@@ -165,7 +169,11 @@ impl PostgresArticlesService {
               WHERE authored_articles.author_id = a.author_id
                 AND lower(authored_articles.status) = 'published'
             ) author_stats ON true
-            WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
+            WHERE (
+                lower(a.status) = 'published'
+                OR $6::boolean
+                OR ($7::uuid IS NOT NULL AND a.author_id = $7)
+              )
               AND ($1::text IS NULL OR a.category_slug = $1)
               AND ($4::uuid IS NULL OR a.author_id = $4)
               AND (
@@ -186,6 +194,8 @@ impl PostgresArticlesService {
         .bind(offset as i64)
         .bind(author)
         .bind(search)
+        .bind(audience.sees_all_drafts())
+        .bind(audience.draft_owner())
         .fetch_all(&self.pool)
         .await
         .context("Failed to list articles from Postgres")?;
@@ -251,9 +261,12 @@ impl PostgresArticlesService {
         category: Option<&str>,
         search: Option<&str>,
         author: Option<Uuid>,
+        audience: ArticleAudience,
     ) -> Result<u32> {
         let search = search.map(str::trim).filter(|search| !search.is_empty());
-        let cache_key = if search.is_none() && author.is_none() {
+        // Must match get_posts' cacheability rule, or the count and the page
+        // disagree about whether drafts are included.
+        let cache_key = if search.is_none() && author.is_none() && audience.is_cacheable() {
             Some(crate::services::cache::keys::article_count(category))
         } else {
             None
@@ -269,7 +282,11 @@ impl PostgresArticlesService {
             SELECT COUNT(*)
             FROM articles a
             LEFT JOIN profiles p ON p.id = a.author_id
-            WHERE (lower(a.status) = 'published' OR lower(a.status) = 'draft')
+            WHERE (
+                lower(a.status) = 'published'
+                OR $4::boolean
+                OR ($5::uuid IS NOT NULL AND a.author_id = $5)
+              )
               AND ($1::text IS NULL OR a.category_slug = $1)
               AND ($2::uuid IS NULL OR a.author_id = $2)
               AND (
@@ -285,6 +302,8 @@ impl PostgresArticlesService {
         .bind(category)
         .bind(author)
         .bind(search)
+        .bind(audience.sees_all_drafts())
+        .bind(audience.draft_owner())
         .fetch_one(&self.pool)
         .await
         .context("Failed to count articles in Postgres")?;
@@ -304,9 +323,17 @@ impl PostgresArticlesService {
         Ok(total)
     }
 
-    pub async fn get_post_by_slug(&self, slug: &str) -> Result<Option<Article>> {
+    pub async fn get_post_by_slug(
+        &self,
+        slug: &str,
+        audience: ArticleAudience,
+    ) -> Result<Option<Article>> {
+        // Only the public view is cached, so a draft can never be written to
+        // the shared per-slug key and then served to an anonymous reader.
         let cache_key = crate::services::cache::keys::article_by_slug(slug);
-        if let Ok(Some(cached)) = self.cache.get::<Article>(&cache_key).await {
+        if audience.is_cacheable()
+            && let Ok(Some(cached)) = self.cache.get::<Article>(&cache_key).await
+        {
             return Ok(Some(cached));
         }
 
@@ -351,11 +378,18 @@ impl PostgresArticlesService {
                 AND lower(authored_articles.status) = 'published'
             ) author_stats ON true
             WHERE a.slug = $1
+              AND (
+                lower(a.status) = 'published'
+                OR $2::boolean
+                OR ($3::uuid IS NOT NULL AND a.author_id = $3)
+              )
             LIMIT 1
             "#,
         )
         .persistent(false)
         .bind(slug)
+        .bind(audience.sees_all_drafts())
+        .bind(audience.draft_owner())
         .fetch_optional(&self.pool)
         .await
         .context("Failed to fetch article from Postgres")?;
@@ -412,14 +446,17 @@ impl PostgresArticlesService {
             read_time_minutes: resolved_read_time_minutes,
         };
 
-        let _ = self
-            .cache
-            .set(
-                &cache_key,
-                &article,
-                crate::services::cache::ttl::ARTICLE_DETAIL,
-            )
-            .await;
+        // Never write a draft into the shared per-slug cache key.
+        if audience.is_cacheable() {
+            let _ = self
+                .cache
+                .set(
+                    &cache_key,
+                    &article,
+                    crate::services::cache::ttl::ARTICLE_DETAIL,
+                )
+                .await;
+        }
 
         Ok(Some(article))
     }
@@ -586,7 +623,15 @@ impl PostgresArticlesService {
         actor_id: Uuid,
         can_manage_all: bool,
     ) -> Result<Option<Article>> {
-        let current = match self.get_post_by_slug(slug).await? {
+        // Read with full visibility so an author can edit their own draft;
+        // ownership is enforced immediately below. Using Moderator here also
+        // bypasses the cache, which matters: this row is the base for the
+        // UPDATE, and patching from a stale cached copy silently reverted
+        // fields changed by a concurrent edit.
+        let current = match self
+            .get_post_by_slug(slug, ArticleAudience::Moderator)
+            .await?
+        {
             Some(article) => article,
             None => return Ok(None),
         };
@@ -650,7 +695,9 @@ impl PostgresArticlesService {
             .await;
         let _ = self.cache.invalidate_articles().await;
 
-        self.get_post_by_slug(slug).await
+        // Return the updated row to its editor even if it is still a draft.
+        self.get_post_by_slug(slug, ArticleAudience::Moderator)
+            .await
     }
 
     pub async fn delete_post(
