@@ -16,6 +16,16 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OnceCell;
 
+/// How long to wait for a Redis connection before giving up.
+///
+/// Deliberately short: the cache is optional, and the rate limiter that uses
+/// it runs in front of every `/api/v1` route. A slow cache must never become a
+/// slow API.
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// How long to wait for a single Redis command.
+const OP_TIMEOUT: Duration = Duration::from_millis(1000);
+
 /// Cache key prefixes to avoid collisions.
 pub mod keys {
     /// Cache key for the article feed list.
@@ -126,6 +136,14 @@ impl CacheService {
     ///
     /// `ConnectionManager` is cheap to clone — clones share one multiplexed
     /// connection and one reconnect state machine.
+    ///
+    /// Every path here is bounded by a timeout. The cache sits behind the rate
+    /// limiter, which runs in front of every `/api/v1` route, so an
+    /// unreachable Redis must fail in milliseconds rather than retry. When the
+    /// configured host stopped resolving (an Upstash free-tier database that
+    /// had been deleted), the manager's default retry-with-backoff turned
+    /// every API request into a hang — strictly worse than the cache simply
+    /// being unavailable.
     async fn connection(&self) -> Result<ConnectionManager> {
         let inner = self
             .inner
@@ -134,11 +152,47 @@ impl CacheService {
 
         let manager = inner
             .manager
-            .get_or_try_init(|| ConnectionManager::new(inner.client.clone()))
+            .get_or_try_init(|| async {
+                let config = redis::aio::ConnectionManagerConfig::new()
+                    // One attempt, then give up and let the caller degrade.
+                    .set_number_of_retries(0)
+                    .set_connection_timeout(CONNECT_TIMEOUT)
+                    .set_response_timeout(OP_TIMEOUT);
+
+                tokio::time::timeout(
+                    CONNECT_TIMEOUT,
+                    ConnectionManager::new_with_config(inner.client.clone(), config),
+                )
+                .await
+                .map_err(|_| {
+                    anyhow::anyhow!("Redis connection attempt timed out after {CONNECT_TIMEOUT:?}")
+                })?
+                .map_err(anyhow::Error::from)
+            })
             .await
             .context("Failed to establish Redis connection")?;
 
         Ok(manager.clone())
+    }
+
+    /// Run one cache operation under a hard deadline.
+    ///
+    /// Bounds the command itself, not just connection setup, so a Redis that
+    /// accepts connections but stops answering cannot stall a request either.
+    ///
+    /// The budget covers connecting *and* the command, because the first call
+    /// after startup does both. A budget shorter than `CONNECT_TIMEOUT` would
+    /// abort a connection that was about to succeed.
+    async fn with_deadline<T>(
+        &self,
+        what: &str,
+        op: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        let budget = CONNECT_TIMEOUT + OP_TIMEOUT;
+        match tokio::time::timeout(budget, op).await {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!("Redis {what} timed out after {budget:?}")),
+        }
     }
 
     /// Get a value from the cache, deserializing from JSON.
@@ -147,21 +201,24 @@ impl CacheService {
             return Ok(None);
         }
 
-        let mut conn = self.connection().await?;
-        let raw: Option<String> = redis::cmd("GET")
-            .arg(key)
-            .query_async(&mut conn)
-            .await
-            .with_context(|| format!("Redis GET failed for key '{key}'"))?;
+        self.with_deadline("GET", async {
+            let mut conn = self.connection().await?;
+            let raw: Option<String> = redis::cmd("GET")
+                .arg(key)
+                .query_async(&mut conn)
+                .await
+                .with_context(|| format!("Redis GET failed for key '{key}'"))?;
 
-        match raw {
-            Some(json) => {
-                let parsed = serde_json::from_str::<T>(&json)
-                    .with_context(|| format!("Failed to deserialize cache key '{key}'"))?;
-                Ok(Some(parsed))
+            match raw {
+                Some(json) => {
+                    let parsed = serde_json::from_str::<T>(&json)
+                        .with_context(|| format!("Failed to deserialize cache key '{key}'"))?;
+                    Ok(Some(parsed))
+                }
+                None => Ok(None),
             }
-            None => Ok(None),
-        }
+        })
+        .await
     }
 
     /// Set a value in the cache with a TTL, serializing to JSON.
@@ -173,16 +230,19 @@ impl CacheService {
         let json = serde_json::to_string(value)
             .with_context(|| format!("Failed to serialize cache value for key '{key}'"))?;
 
-        let mut conn = self.connection().await?;
-        redis::cmd("SETEX")
-            .arg(key)
-            .arg(ttl.as_secs())
-            .arg(&json)
-            .query_async::<()>(&mut conn)
-            .await
-            .with_context(|| format!("Redis SETEX failed for key '{key}'"))?;
+        self.with_deadline("SETEX", async {
+            let mut conn = self.connection().await?;
+            redis::cmd("SETEX")
+                .arg(key)
+                .arg(ttl.as_secs())
+                .arg(&json)
+                .query_async::<()>(&mut conn)
+                .await
+                .with_context(|| format!("Redis SETEX failed for key '{key}'"))?;
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Delete a key from the cache (for cache invalidation).
@@ -191,13 +251,16 @@ impl CacheService {
             return Ok(());
         }
 
-        let mut conn = self.connection().await?;
-        redis::cmd("DEL")
-            .arg(key)
-            .query_async::<()>(&mut conn)
-            .await
-            .with_context(|| format!("Redis DEL failed for key '{key}'"))?;
-        Ok(())
+        self.with_deadline("DEL", async {
+            let mut conn = self.connection().await?;
+            redis::cmd("DEL")
+                .arg(key)
+                .query_async::<()>(&mut conn)
+                .await
+                .with_context(|| format!("Redis DEL failed for key '{key}'"))?;
+            Ok(())
+        })
+        .await
     }
 
     /// Increment a counter key and apply TTL on first write.
@@ -206,25 +269,28 @@ impl CacheService {
             return Ok(0);
         }
 
-        let mut conn = self.connection().await?;
+        self.with_deadline("INCR", async {
+            let mut conn = self.connection().await?;
 
-        // Pipeline INCR + EXPIRE so the counter can never outlive its window
-        // if the process dies between the two commands, and so each rate-limit
-        // check costs one round trip instead of two.
-        let (count,): (u64,) = redis::pipe()
-            .atomic()
-            .cmd("INCR")
-            .arg(key)
-            .cmd("EXPIRE")
-            .arg(key)
-            .arg(ttl.as_secs())
-            .arg("NX")
-            .ignore()
-            .query_async(&mut conn)
-            .await
-            .with_context(|| format!("Redis INCR failed for key '{key}'"))?;
+            // Pipeline INCR + EXPIRE so the counter can never outlive its window
+            // if the process dies between the two commands, and so each rate-limit
+            // check costs one round trip instead of two.
+            let (count,): (u64,) = redis::pipe()
+                .atomic()
+                .cmd("INCR")
+                .arg(key)
+                .cmd("EXPIRE")
+                .arg(key)
+                .arg(ttl.as_secs())
+                .arg("NX")
+                .ignore()
+                .query_async(&mut conn)
+                .await
+                .with_context(|| format!("Redis INCR failed for key '{key}'"))?;
 
-        Ok(count)
+            Ok(count)
+        })
+        .await
     }
 
     /// Invalidate all article caches (e.g., after creating or editing an article).
@@ -236,35 +302,38 @@ impl CacheService {
             return Ok(());
         }
 
-        let mut conn = self.connection().await?;
-        let mut cursor = 0_u64;
+        self.with_deadline("SCAN+DEL", async {
+            let mut conn = self.connection().await?;
+            let mut cursor = 0_u64;
 
-        loop {
-            let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
-                .arg(cursor)
-                .arg("MATCH")
-                .arg("articles:*")
-                .arg("COUNT")
-                .arg(100)
-                .query_async(&mut conn)
-                .await
-                .context("Redis SCAN failed while invalidating article cache")?;
-
-            if !keys.is_empty() {
-                redis::cmd("DEL")
-                    .arg(keys)
-                    .query_async::<()>(&mut conn)
+            loop {
+                let (next_cursor, keys): (u64, Vec<String>) = redis::cmd("SCAN")
+                    .arg(cursor)
+                    .arg("MATCH")
+                    .arg("articles:*")
+                    .arg("COUNT")
+                    .arg(100)
+                    .query_async(&mut conn)
                     .await
-                    .context("Redis DEL failed while invalidating article cache")?;
+                    .context("Redis SCAN failed while invalidating article cache")?;
+
+                if !keys.is_empty() {
+                    redis::cmd("DEL")
+                        .arg(keys)
+                        .query_async::<()>(&mut conn)
+                        .await
+                        .context("Redis DEL failed while invalidating article cache")?;
+                }
+
+                if next_cursor == 0 {
+                    break;
+                }
+                cursor = next_cursor;
             }
 
-            if next_cursor == 0 {
-                break;
-            }
-            cursor = next_cursor;
-        }
-
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 }
 
