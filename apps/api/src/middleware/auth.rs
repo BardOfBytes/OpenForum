@@ -327,6 +327,29 @@ impl IntoResponse for AuthErrorKind {
     }
 }
 
+/// Whether symmetric HS256 tokens may be accepted.
+///
+/// Supabase signs real user tokens with RS256 and publishes the public half via
+/// JWKS, so production never needs HS256. The HS256 path exists only so the
+/// integration tests can mint tokens without a Supabase project.
+///
+/// It must stay opt-in. `AXUM_JWT_SECRET` is the project's *legacy Supabase JWT
+/// secret* — a value that ends up in env files, dashboards, and screenshots —
+/// and the claims it validates include both `sub` and the role. Accepting HS256
+/// unconditionally therefore turned that one secret into full account
+/// impersonation: anyone holding it could mint an `admin` token for any user id
+/// and moderate or delete any content.
+///
+/// Set `OPENFORUM_ALLOW_HS256_TOKENS=true` in test environments only.
+fn hs256_tokens_allowed() -> bool {
+    std::env::var("OPENFORUM_ALLOW_HS256_TOKENS")
+        .map(|value| {
+            let value = value.trim();
+            value.eq_ignore_ascii_case("true") || value == "1"
+        })
+        .unwrap_or(false)
+}
+
 fn is_supported_jwks_algorithm(algorithm: Algorithm) -> bool {
     matches!(
         algorithm,
@@ -391,7 +414,7 @@ where
 
         // ── Step 4-7: Validate token based on declared algorithm ─
         let claims = match header.alg {
-            Algorithm::HS256 => {
+            Algorithm::HS256 if hs256_tokens_allowed() => {
                 let secret = std::env::var("AXUM_JWT_SECRET").map_err(|_| {
                     AuthErrorKind::ServerError("AXUM_JWT_SECRET is not configured".to_string())
                         .into_response()
@@ -409,13 +432,21 @@ where
                 .claims
             }
             alg if is_supported_jwks_algorithm(alg) => decode_with_jwks(token, &header).await?,
-            _ => {
+            Algorithm::HS256 => {
+                // HS256 is disabled unless explicitly opted in. Log it: a real
+                // HS256 token arriving in production means either a stale
+                // client or someone probing with a leaked shared secret.
+                tracing::warn!("Rejected HS256 token; symmetric tokens are disabled");
                 return Err(AuthErrorKind::InvalidToken(
-                    format!(
-                        "Unsupported JWT algorithm '{:?}'. Expected HS256 or a Supabase JWKS algorithm (RS256/RS384/RS512/ES256/ES384/EdDSA)",
-                        header.alg
-                    ),
+                    "Symmetric (HS256) tokens are not accepted".to_string(),
                 )
+                .into_response());
+            }
+            _ => {
+                return Err(AuthErrorKind::InvalidToken(format!(
+                    "Unsupported JWT algorithm '{:?}'. Expected a Supabase JWKS algorithm (RS256/RS384/RS512/ES256/ES384/EdDSA)",
+                    header.alg
+                ))
                 .into_response());
             }
         };

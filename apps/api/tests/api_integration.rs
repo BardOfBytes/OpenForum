@@ -78,9 +78,12 @@ fn test_auth_token_with_user_id(email: &str, user_id: &str) -> String {
 }
 
 fn test_auth_token_with_user_id_and_role(email: &str, user_id: &str, role: &str) -> String {
-    // Required for auth extractor HS256 validation path in tests.
+    // Required for auth extractor HS256 validation path in tests. HS256 is
+    // opt-in and disabled in production; see hs256_tokens_allowed() in
+    // src/middleware/auth.rs.
     unsafe {
         std::env::set_var("AXUM_JWT_SECRET", TEST_JWT_SECRET);
+        std::env::set_var("OPENFORUM_ALLOW_HS256_TOKENS", "true");
     }
 
     let claims = TestJwtClaims {
