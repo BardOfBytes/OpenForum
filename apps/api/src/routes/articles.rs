@@ -73,19 +73,29 @@ async fn list_articles(
     let author = query.author;
     let audience = audience_for(viewer.as_ref());
 
-    let (data_result, total_result) = tokio::join!(
-        state.articles.get_posts(
+    // Sequential, NOT tokio::join!. Every query sets `.persistent(false)`,
+    // which makes sqlx use the *unnamed* prepared statement (""). That is a
+    // per-connection singleton, and Supabase's transaction pooler multiplexes
+    // pool connections onto fewer server connections — so two queries in
+    // flight at once overwrite each other's statement. The observed failure is
+    // "bind message supplies 7 parameters, but prepared statement \"\"
+    // requires 5" (and the mirror image), returned as a 502 on roughly 80% of
+    // uncached requests in production.
+    let data_result = state
+        .articles
+        .get_posts(
             per_page as usize,
             offset,
             category.as_deref(),
             search.as_deref(),
             author,
             audience,
-        ),
-        state
-            .articles
-            .count_posts(category.as_deref(), search.as_deref(), author, audience)
-    );
+        )
+        .await;
+    let total_result = state
+        .articles
+        .count_posts(category.as_deref(), search.as_deref(), author, audience)
+        .await;
 
     let data = data_result.map_err(|error| {
         tracing::error!(error = %error, error_chain = ?error, "Failed to list articles from storage backend");
@@ -131,22 +141,28 @@ async fn list_user_articles(
 
     let audience = audience_for(viewer.as_ref());
 
-    let (data_result, total_result) = tokio::join!(
-        state.articles.get_posts(
+    // Sequential for the same reason as list_articles above: concurrent
+    // queries clobber the unnamed prepared statement through the pooler.
+    let data_result = state
+        .articles
+        .get_posts(
             per_page as usize,
             offset,
             category.as_deref(),
             search.as_deref(),
             Some(author_id),
             audience,
-        ),
-        state.articles.count_posts(
+        )
+        .await;
+    let total_result = state
+        .articles
+        .count_posts(
             category.as_deref(),
             search.as_deref(),
             Some(author_id),
-            audience
+            audience,
         )
-    );
+        .await;
 
     let data = data_result.map_err(|error| {
         tracing::error!(error = %error, author_id = %author_id, "Failed to list user articles from storage backend");

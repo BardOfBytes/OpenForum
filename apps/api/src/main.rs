@@ -67,21 +67,37 @@ async fn main() -> anyhow::Result<()> {
     let mut connect_options = PgConnectOptions::from_str(&config.database_url)
         .context("Failed to parse Postgres DATABASE_URL")?;
 
-    // Detect a transaction-pooling proxy (Supabase Supavisor / PgBouncer).
-    // Such poolers multiplex many client sessions over a small set of server
-    // connections, so server-side prepared statements cached by sqlx get
-    // cross-wired between queries — producing "invalid length"/"no rows"
-    // decode errors. Disabling the statement cache makes sqlx send each query
-    // without a persistent prepared statement, which is pooler-safe.
-    let url = config.database_url.as_str();
-    let uses_pooler = url.contains("pooler.supabase.com")
-        || url.contains("supabase.co:6543")
-        || url.contains(":6543")
-        || url.contains("pgbouncer=true");
+    // Disable sqlx's prepared-statement cache unconditionally.
+    //
+    // A transaction-pooling proxy (Supabase Supavisor / PgBouncer) multiplexes
+    // many client sessions over few server connections, so cached prepared
+    // statements get cross-wired between queries. The symptom is that any
+    // endpoint issuing two queries concurrently fails intermittently with
+    // "supplies N parameters, but prepared statement requires M" or
+    // "invalid length: expected 16 bytes, found 8".
+    //
+    // This used to be gated on sniffing DATABASE_URL for pooler markers, which
+    // is fragile: a deployment whose URL did not match the patterns silently
+    // kept the cache and broke in production. Both `tokio::join!` endpoints
+    // (/api/v1/articles and /api/v1/users/{id}/articles) were returning 502 on
+    // roughly 80% of requests while every single-query endpoint stayed healthy
+    // — the signature of exactly this bug.
+    //
+    // Making it unconditional costs nothing: every query in
+    // services/articles_postgres.rs already sets `.persistent(false)`, so the
+    // cache was never populated on purpose in the first place. Set
+    // OPENFORUM_PG_STATEMENT_CACHE=<n> to re-enable it on a direct
+    // (non-pooled) connection.
+    let statement_cache_capacity = std::env::var("OPENFORUM_PG_STATEMENT_CACHE")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(0);
 
-    if uses_pooler {
-        connect_options = connect_options.statement_cache_capacity(0);
-    }
+    connect_options = connect_options.statement_cache_capacity(statement_cache_capacity);
+    tracing::info!(
+        statement_cache_capacity,
+        "Postgres statement cache configured (0 = pooler-safe)"
+    );
 
     let pool = PgPoolOptions::new()
         .max_connections(5)
