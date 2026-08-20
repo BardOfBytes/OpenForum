@@ -4,12 +4,13 @@ import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import type { Editor as TiptapEditor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
 import CharacterCount from "@tiptap/extension-character-count";
 import Underline from "@tiptap/extension-underline";
 import Highlight from "@tiptap/extension-highlight";
+import Subscript from "@tiptap/extension-subscript";
+import Superscript from "@tiptap/extension-superscript";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { Table } from "@tiptap/extension-table";
@@ -28,14 +29,14 @@ import bash from "highlight.js/lib/languages/bash";
 import json from "highlight.js/lib/languages/json";
 import markdown from "highlight.js/lib/languages/markdown";
 import css from "highlight.js/lib/languages/css";
-import {
-  useEffect,
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-} from "react";
+import DOMPurify from "dompurify";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { ApiBaseUrlConfigurationError, apiUrl } from "@/lib/api/base-url";
+import {
+  htmlToMarkdown,
+  looksLikeMarkdown,
+  markdownToHtml,
+} from "@/lib/markdown";
 import {
   Image as ImageIcon,
   Bold,
@@ -59,13 +60,23 @@ import {
   AlignCenter,
   AlignRight,
   Sigma,
-  Sparkles,
+  Subscript as SubscriptIcon,
+  Superscript as SuperscriptIcon,
+  Search,
+  ChevronUp,
+  ChevronDown,
+  Download,
+  Menu as OutlineIcon,
+  Lightbulb,
+  AlertTriangle,
+  CheckCircle2,
+  AlertOctagon,
+  X,
 } from "lucide-react";
 import { CodeBlockLowlightWithLanguage } from "./extensions/CodeBlockWithLanguage";
-import {
-  SlashCommand,
-  type SlashCommandItem,
-} from "./extensions/SlashCommand";
+import { ResizableImage } from "./extensions/ResizableImage";
+import { FindAndReplace } from "./extensions/FindAndReplace";
+import { SlashCommand, type SlashCommandItem } from "./extensions/SlashCommand";
 import styles from "./ArticleEditor.module.css";
 import "katex/dist/katex.min.css";
 
@@ -101,6 +112,27 @@ lowlight.register("markdown", markdown);
 lowlight.register("md", markdown);
 lowlight.register("css", css);
 
+const PASTE_SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true },
+  ADD_TAGS: ["iframe"],
+  ADD_ATTR: [
+    "allow",
+    "allowfullscreen",
+    "class",
+    "colspan",
+    "colwidth",
+    "data-align",
+    "data-checked",
+    "data-latex",
+    "data-type",
+    "frameborder",
+    "height",
+    "src",
+    "style",
+    "width",
+  ],
+};
+
 interface UploadResponse {
   error?: string;
   message?: string;
@@ -117,6 +149,8 @@ interface ToolbarState {
   isUnderline: boolean;
   isHighlight: boolean;
   isStrike: boolean;
+  isSubscript: boolean;
+  isSuperscript: boolean;
   isLink: boolean;
   isInlineCode: boolean;
   isYoutube: boolean;
@@ -143,6 +177,8 @@ const DEFAULT_TOOLBAR_STATE: ToolbarState = {
   isUnderline: false,
   isHighlight: false,
   isStrike: false,
+  isSubscript: false,
+  isSuperscript: false,
   isLink: false,
   isInlineCode: false,
   isYoutube: false,
@@ -160,6 +196,28 @@ const DEFAULT_TOOLBAR_STATE: ToolbarState = {
   canUndo: false,
   canRedo: false,
 };
+
+interface HeadingOutlineEntry {
+  pos: number;
+  level: number;
+  text: string;
+}
+
+interface FindState {
+  resultCount: number;
+  activeIndex: number;
+}
+
+const DEFAULT_FIND_STATE: FindState = { resultCount: 0, activeIndex: 0 };
+
+const CALLOUT_STYLES = {
+  tip: { emoji: "\u{1F4A1}", label: "Tip" },
+  warning: { emoji: "\u26A0\uFE0F", label: "Warning" },
+  success: { emoji: "\u2705", label: "Success" },
+  danger: { emoji: "\u{1F6AB}", label: "Danger" },
+} as const;
+
+type CalloutType = keyof typeof CALLOUT_STYLES;
 
 function isEditorContentEmpty(html: string): boolean {
   const temp = document.createElement("div");
@@ -197,10 +255,18 @@ export default function ArticleEditor({
   const [saveIndicator, setSaveIndicator] = useState("");
   const [isLinkEditorOpen, setIsLinkEditorOpen] = useState(false);
   const [linkInputValue, setLinkInputValue] = useState("https://");
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const [isOutlineOpen, setIsOutlineOpen] = useState(false);
+  const [isFindOpen, setIsFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceQuery, setReplaceQuery] = useState("");
   const autosaveEnabledRef = useRef(autosaveEnabled);
   const onChangeRef = useRef(onChange);
   const editorRef = useRef<TiptapEditor | null>(null);
   const saveIndicatorTimeoutRef = useRef<number | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const outlineMenuRef = useRef<HTMLDivElement | null>(null);
+  const findInputRef = useRef<HTMLInputElement | null>(null);
 
   const showSaveIndicator = useCallback((message: string, timeoutMs = 2200) => {
     setSaveIndicator(message);
@@ -245,7 +311,9 @@ export default function ArticleEditor({
       }
 
       if (!file.type || !ALLOWED_IMAGE_MIME_TYPES.has(file.type)) {
-        throw new Error("Unsupported file type. Please upload JPG, PNG, or WEBP.");
+        throw new Error(
+          "Unsupported file type. Please upload JPG, PNG, or WEBP.",
+        );
       }
 
       showSaveIndicator("Uploading image...", 4000);
@@ -271,7 +339,7 @@ export default function ArticleEditor({
         throw new Error(
           body?.message ??
             body?.error ??
-            `Image upload failed (HTTP ${response.status}).`
+            `Image upload failed (HTTP ${response.status}).`,
         );
       }
 
@@ -286,14 +354,14 @@ export default function ArticleEditor({
       showSaveIndicator("Image uploaded");
       return body.public_url;
     },
-    [sessionToken, showSaveIndicator]
+    [sessionToken, showSaveIndicator],
   );
 
   const insertImageAtSelection = useCallback(
     (
       imageUrl: string,
       position?: number,
-      targetEditor?: TiptapEditor | null
+      targetEditor?: TiptapEditor | null,
     ) => {
       const activeEditor = targetEditor ?? editorRef.current;
 
@@ -311,14 +379,14 @@ export default function ArticleEditor({
 
       chain.setImage({ src: imageUrl }).run();
     },
-    []
+    [],
   );
 
   const handleImageFiles = useCallback(
     async (
       files: FileList | File[],
       position?: number,
-      targetEditor?: TiptapEditor | null
+      targetEditor?: TiptapEditor | null,
     ) => {
       const [firstFile] = Array.from(files);
 
@@ -343,7 +411,7 @@ export default function ArticleEditor({
         alert(message);
       }
     },
-    [insertImageAtSelection, uploadImage]
+    [insertImageAtSelection, uploadImage],
   );
 
   const handleImageUpload = useCallback(() => {
@@ -363,110 +431,175 @@ export default function ArticleEditor({
     input.click();
   }, [handleImageFiles]);
 
-  const insertYoutubeVideo = useCallback((targetEditor?: TiptapEditor | null) => {
-    const activeEditor = targetEditor ?? editorRef.current;
+  const insertYoutubeVideo = useCallback(
+    (targetEditor?: TiptapEditor | null) => {
+      const activeEditor = targetEditor ?? editorRef.current;
 
-    if (!activeEditor) {
-      return;
-    }
+      if (!activeEditor) {
+        return;
+      }
 
-    const input = window.prompt(
-      "Paste a YouTube URL",
-      "https://www.youtube.com/watch?v="
-    );
+      const input = window.prompt(
+        "Paste a YouTube URL",
+        "https://www.youtube.com/watch?v=",
+      );
 
-    if (input === null) {
-      return;
-    }
+      if (input === null) {
+        return;
+      }
 
-    const url = input.trim();
+      const url = input.trim();
 
-    if (!url) {
-      return;
-    }
+      if (!url) {
+        return;
+      }
 
-    if (!isSafeHttpUrl(url)) {
-      alert("Please enter a valid http:// or https:// YouTube URL.");
-      return;
-    }
+      if (!isSafeHttpUrl(url)) {
+        alert("Please enter a valid http:// or https:// YouTube URL.");
+        return;
+      }
 
-    const inserted = activeEditor
-      .chain()
-      .focus()
-      .setYoutubeVideo({
-        src: url,
-        width: 960,
-        height: 540,
-      })
-      .run();
+      const inserted = activeEditor
+        .chain()
+        .focus()
+        .setYoutubeVideo({
+          src: url,
+          width: 960,
+          height: 540,
+        })
+        .run();
 
-    if (!inserted) {
-      alert("That does not look like a valid YouTube URL.");
-    }
+      if (!inserted) {
+        alert("That does not look like a valid YouTube URL.");
+      }
+    },
+    [],
+  );
+
+  const insertCallout = useCallback(
+    (type: CalloutType, targetEditor?: TiptapEditor | null) => {
+      const activeEditor = targetEditor ?? editorRef.current;
+
+      if (!activeEditor) {
+        return;
+      }
+
+      const { emoji, label } = CALLOUT_STYLES[type];
+
+      activeEditor
+        .chain()
+        .focus()
+        .insertContent(
+          `<blockquote><p>${emoji} <strong>${label}:</strong> Add your note here.</p></blockquote>`,
+        )
+        .run();
+    },
+    [],
+  );
+
+  const insertInlineMathNode = useCallback(
+    (targetEditor?: TiptapEditor | null) => {
+      const activeEditor = targetEditor ?? editorRef.current;
+
+      if (!activeEditor) {
+        return;
+      }
+
+      const latex = window.prompt("Inline LaTeX", "x^2")?.trim();
+
+      if (!latex) {
+        return;
+      }
+
+      const inserted = activeEditor
+        .chain()
+        .focus()
+        .insertInlineMath({ latex })
+        .run();
+
+      if (!inserted) {
+        alert(
+          "Could not insert inline equation at the current cursor position.",
+        );
+      }
+    },
+    [],
+  );
+
+  const insertBlockMathNode = useCallback(
+    (targetEditor?: TiptapEditor | null) => {
+      const activeEditor = targetEditor ?? editorRef.current;
+
+      if (!activeEditor) {
+        return;
+      }
+
+      const latex = window.prompt("Block LaTeX", "\\sum_{i=1}^{n} x_i")?.trim();
+
+      if (!latex) {
+        return;
+      }
+
+      const inserted = activeEditor
+        .chain()
+        .focus()
+        .insertBlockMath({ latex })
+        .run();
+
+      if (!inserted) {
+        alert(
+          "Could not insert block equation at the current cursor position.",
+        );
+      }
+    },
+    [],
+  );
+
+  const exportAsMarkdown = useCallback((): string => {
+    const activeEditor = editorRef.current;
+    if (!activeEditor) return "";
+    return htmlToMarkdown(activeEditor.getHTML());
   }, []);
 
-  const insertCallout = useCallback((targetEditor?: TiptapEditor | null) => {
-    const activeEditor = targetEditor ?? editorRef.current;
+  const handleCopyMarkdown = useCallback(async () => {
+    const markdownText = exportAsMarkdown();
 
-    if (!activeEditor) {
-      return;
+    try {
+      await navigator.clipboard.writeText(markdownText);
+      showSaveIndicator("Copied as Markdown");
+    } catch {
+      showSaveIndicator("Could not copy to clipboard");
     }
 
-    activeEditor
-      .chain()
-      .focus()
-      .insertContent(
-        '<blockquote><p><strong>Callout:</strong> Add an important note here.</p></blockquote>'
-      )
-      .run();
+    setIsExportMenuOpen(false);
+  }, [exportAsMarkdown, showSaveIndicator]);
+
+  const handleDownloadMarkdown = useCallback(() => {
+    const markdownText = exportAsMarkdown();
+    const blob = new Blob([markdownText], {
+      type: "text/markdown;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "article.md";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setIsExportMenuOpen(false);
+    showSaveIndicator("Markdown downloaded");
+  }, [exportAsMarkdown, showSaveIndicator]);
+
+  const closeFindBar = useCallback(() => {
+    editorRef.current?.commands.clearSearch();
+    setIsFindOpen(false);
+    setFindQuery("");
+    setReplaceQuery("");
   }, []);
 
-  const insertInlineMathNode = useCallback((targetEditor?: TiptapEditor | null) => {
-    const activeEditor = targetEditor ?? editorRef.current;
-
-    if (!activeEditor) {
-      return;
-    }
-
-    const latex = window.prompt("Inline LaTeX", "x^2")?.trim();
-
-    if (!latex) {
-      return;
-    }
-
-    const inserted = activeEditor
-      .chain()
-      .focus()
-      .insertInlineMath({ latex })
-      .run();
-
-    if (!inserted) {
-      alert("Could not insert inline equation at the current cursor position.");
-    }
-  }, []);
-
-  const insertBlockMathNode = useCallback((targetEditor?: TiptapEditor | null) => {
-    const activeEditor = targetEditor ?? editorRef.current;
-
-    if (!activeEditor) {
-      return;
-    }
-
-    const latex = window.prompt("Block LaTeX", "\\sum_{i=1}^{n} x_i")?.trim();
-
-    if (!latex) {
-      return;
-    }
-
-    const inserted = activeEditor
-      .chain()
-      .focus()
-      .insertBlockMath({ latex })
-      .run();
-
-    if (!inserted) {
-      alert("Could not insert block equation at the current cursor position.");
-    }
+  const openFindBar = useCallback(() => {
+    setIsFindOpen((wasOpen) => !wasOpen);
   }, []);
 
   const slashCommands = useMemo<SlashCommandItem[]>(
@@ -474,6 +607,8 @@ export default function ArticleEditor({
       {
         title: "Heading 1",
         description: "Large section heading",
+        category: "Basic blocks",
+        icon: Heading,
         aliases: ["h1", "title"],
         command: (targetEditor) =>
           targetEditor.chain().focus().toggleHeading({ level: 1 }).run(),
@@ -481,6 +616,8 @@ export default function ArticleEditor({
       {
         title: "Heading 2",
         description: "Section heading",
+        category: "Basic blocks",
+        icon: Heading,
         aliases: ["h2", "subtitle"],
         command: (targetEditor) =>
           targetEditor.chain().focus().toggleHeading({ level: 2 }).run(),
@@ -488,6 +625,8 @@ export default function ArticleEditor({
       {
         title: "Heading 3",
         description: "Subsection heading",
+        category: "Basic blocks",
+        icon: Heading,
         aliases: ["h3"],
         command: (targetEditor) =>
           targetEditor.chain().focus().toggleHeading({ level: 3 }).run(),
@@ -495,36 +634,69 @@ export default function ArticleEditor({
       {
         title: "Bullet List",
         description: "Unordered list",
+        category: "Basic blocks",
+        icon: List,
         aliases: ["ul", "list"],
-        command: (targetEditor) => targetEditor.chain().focus().toggleBulletList().run(),
+        command: (targetEditor) =>
+          targetEditor.chain().focus().toggleBulletList().run(),
       },
       {
         title: "Ordered List",
         description: "Numbered list",
+        category: "Basic blocks",
+        icon: ListOrdered,
         aliases: ["ol", "numbered"],
-        command: (targetEditor) => targetEditor.chain().focus().toggleOrderedList().run(),
+        command: (targetEditor) =>
+          targetEditor.chain().focus().toggleOrderedList().run(),
       },
       {
         title: "Task List",
         description: "Checklist with toggles",
+        category: "Basic blocks",
+        icon: CheckSquare,
         aliases: ["todo", "checklist"],
-        command: (targetEditor) => targetEditor.chain().focus().toggleTaskList().run(),
-      },
-      {
-        title: "Code Block",
-        description: "Syntax highlighted code",
-        aliases: ["code", "snippet"],
-        command: (targetEditor) => targetEditor.chain().focus().toggleCodeBlock().run(),
+        command: (targetEditor) =>
+          targetEditor.chain().focus().toggleTaskList().run(),
       },
       {
         title: "Blockquote",
         description: "Quoted callout block",
+        category: "Basic blocks",
+        icon: Quote,
         aliases: ["quote"],
-        command: (targetEditor) => targetEditor.chain().focus().toggleBlockquote().run(),
+        command: (targetEditor) =>
+          targetEditor.chain().focus().toggleBlockquote().run(),
+      },
+      {
+        title: "Divider",
+        description: "Horizontal rule",
+        category: "Basic blocks",
+        icon: Minus,
+        aliases: ["hr", "separator"],
+        command: (targetEditor) =>
+          targetEditor.chain().focus().setHorizontalRule().run(),
+      },
+      {
+        title: "Image",
+        description: "Upload an image",
+        category: "Media",
+        icon: ImageIcon,
+        aliases: ["photo", "picture"],
+        command: () => handleImageUpload(),
+      },
+      {
+        title: "YouTube",
+        description: "Embed a YouTube video",
+        category: "Media",
+        icon: PlaySquare,
+        aliases: ["video", "embed"],
+        command: (targetEditor) => insertYoutubeVideo(targetEditor),
       },
       {
         title: "Table",
         description: "Insert a 3x3 table",
+        category: "Media",
+        icon: Table2,
         aliases: ["grid"],
         command: (targetEditor) =>
           targetEditor
@@ -534,200 +706,300 @@ export default function ArticleEditor({
             .run(),
       },
       {
-        title: "Image",
-        description: "Upload an image",
-        aliases: ["photo", "media"],
-        command: () => handleImageUpload(),
-      },
-      {
-        title: "YouTube",
-        description: "Embed a YouTube video",
-        aliases: ["video"],
-        command: (targetEditor) => insertYoutubeVideo(targetEditor),
-      },
-      {
-        title: "Divider",
-        description: "Horizontal rule",
-        aliases: ["hr", "separator"],
-        command: (targetEditor) => targetEditor.chain().focus().setHorizontalRule().run(),
-      },
-      {
-        title: "Callout",
-        description: "Important highlighted note",
-        aliases: ["note", "alert"],
-        command: (targetEditor) => insertCallout(targetEditor),
+        title: "Code Block",
+        description: "Syntax highlighted code",
+        category: "Advanced",
+        icon: Code,
+        aliases: ["code", "snippet"],
+        command: (targetEditor) =>
+          targetEditor.chain().focus().toggleCodeBlock().run(),
       },
       {
         title: "Inline Math",
         description: "Insert LaTeX inline equation",
+        category: "Advanced",
+        icon: Sigma,
         aliases: ["math", "latex"],
         command: (targetEditor) => insertInlineMathNode(targetEditor),
       },
       {
         title: "Block Math",
         description: "Insert displayed LaTeX equation",
+        category: "Advanced",
+        icon: Sigma,
         aliases: ["equation"],
         command: (targetEditor) => insertBlockMathNode(targetEditor),
       },
+      {
+        title: "Tip Callout",
+        description: "Highlighted tip note",
+        category: "Callouts",
+        icon: Lightbulb,
+        aliases: ["note", "info", "tip"],
+        command: (targetEditor) => insertCallout("tip", targetEditor),
+      },
+      {
+        title: "Warning Callout",
+        description: "Highlighted warning note",
+        category: "Callouts",
+        icon: AlertTriangle,
+        aliases: ["warn", "caution"],
+        command: (targetEditor) => insertCallout("warning", targetEditor),
+      },
+      {
+        title: "Success Callout",
+        description: "Highlighted success note",
+        category: "Callouts",
+        icon: CheckCircle2,
+        aliases: ["done", "success"],
+        command: (targetEditor) => insertCallout("success", targetEditor),
+      },
+      {
+        title: "Danger Callout",
+        description: "Highlighted danger note",
+        category: "Callouts",
+        icon: AlertOctagon,
+        aliases: ["danger", "alert", "error"],
+        command: (targetEditor) => insertCallout("danger", targetEditor),
+      },
+      {
+        title: "Find & Replace",
+        description: "Search and replace text in this article",
+        category: "Actions",
+        icon: Search,
+        aliases: ["search", "replace"],
+        command: () => setIsFindOpen(true),
+      },
+      {
+        title: "Document Outline",
+        description: "Jump between headings",
+        category: "Actions",
+        icon: OutlineIcon,
+        aliases: ["toc", "outline", "headings"],
+        command: () => setIsOutlineOpen(true),
+      },
+      {
+        title: "Copy as Markdown",
+        description: "Copy the article body as Markdown",
+        category: "Actions",
+        icon: Download,
+        aliases: ["markdown", "export", "md"],
+        command: () => void handleCopyMarkdown(),
+      },
     ],
     [
+      handleCopyMarkdown,
       handleImageUpload,
       insertBlockMathNode,
       insertCallout,
       insertInlineMathNode,
       insertYoutubeVideo,
-    ]
+    ],
   );
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    shouldRerenderOnTransaction: true,
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3],
+  const editor = useEditor(
+    {
+      immediatelyRender: false,
+      shouldRerenderOnTransaction: true,
+      extensions: [
+        StarterKit.configure({
+          heading: {
+            levels: [1, 2, 3],
+          },
+          codeBlock: false,
+        }),
+        CodeBlockLowlightWithLanguage.configure({
+          lowlight,
+        }),
+        ResizableImage,
+        Link.configure({
+          openOnClick: false,
+        }),
+        Underline,
+        Highlight.configure({
+          multicolor: false,
+        }),
+        Subscript,
+        Superscript,
+        TaskList,
+        TaskItem.configure({
+          nested: true,
+        }),
+        Table.configure({
+          resizable: true,
+        }),
+        TableRow,
+        TableHeader,
+        TableCell,
+        Youtube.configure({
+          addPasteHandler: true,
+        }),
+        TextAlign.configure({
+          types: ["heading", "paragraph"],
+        }),
+        Mathematics.configure({
+          inlineOptions: {
+            onClick: (_node, pos) => {
+              const activeEditor = editorRef.current;
+
+              if (!activeEditor) {
+                return;
+              }
+
+              const currentNode = activeEditor.state.doc.nodeAt(pos);
+              const currentLatex =
+                typeof currentNode?.attrs?.latex === "string"
+                  ? currentNode.attrs.latex
+                  : "";
+              const nextLatex = window
+                .prompt("Edit inline LaTeX", currentLatex)
+                ?.trim();
+
+              if (!nextLatex) {
+                return;
+              }
+
+              activeEditor
+                .chain()
+                .focus()
+                .updateInlineMath({ pos, latex: nextLatex })
+                .run();
+            },
+          },
+          blockOptions: {
+            onClick: (_node, pos) => {
+              const activeEditor = editorRef.current;
+
+              if (!activeEditor) {
+                return;
+              }
+
+              const currentNode = activeEditor.state.doc.nodeAt(pos);
+              const currentLatex =
+                typeof currentNode?.attrs?.latex === "string"
+                  ? currentNode.attrs.latex
+                  : "";
+              const nextLatex = window
+                .prompt("Edit block LaTeX", currentLatex)
+                ?.trim();
+
+              if (!nextLatex) {
+                return;
+              }
+
+              activeEditor
+                .chain()
+                .focus()
+                .updateBlockMath({ pos, latex: nextLatex })
+                .run();
+            },
+          },
+          katexOptions: {
+            throwOnError: false,
+            strict: false,
+          },
+        }),
+        Placeholder.configure({
+          placeholder: "Write your masterpiece...",
+        }),
+        CharacterCount.configure({
+          limit: MAX_CHARACTERS,
+        }),
+        FindAndReplace,
+        SlashCommand.configure({
+          items: slashCommands,
+        }),
+      ],
+      content: initialContent,
+      onCreate: ({ editor: activeEditor }) => {
+        editorRef.current = activeEditor;
+        onChangeRef.current(activeEditor.getHTML());
+      },
+      onUpdate: ({ editor: activeEditor }) => {
+        editorRef.current = activeEditor;
+        onChangeRef.current(activeEditor.getHTML());
+      },
+      onDestroy: () => {
+        editorRef.current = null;
+      },
+      editorProps: {
+        attributes: {
+          class:
+            "prose prose-lg focus:outline-none max-w-none min-h-[500px] px-1",
         },
-        codeBlock: false,
-      }),
-      CodeBlockLowlightWithLanguage.configure({
-        lowlight,
-      }),
-      Image,
-      Link.configure({
-        openOnClick: false,
-      }),
-      Underline,
-      Highlight.configure({
-        multicolor: false,
-      }),
-      TaskList,
-      TaskItem.configure({
-        nested: true,
-      }),
-      Table.configure({
-        resizable: true,
-      }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      Youtube.configure({
-        addPasteHandler: true,
-      }),
-      TextAlign.configure({
-        types: ["heading", "paragraph"],
-      }),
-      Mathematics.configure({
-        inlineOptions: {
-          onClick: (_node, pos) => {
+        handleDrop: (view, event, _slice, moved) => {
+          if (moved) {
+            return false;
+          }
+
+          const imageFiles = Array.from(event.dataTransfer?.files ?? []).filter(
+            (file) => file.type.startsWith("image/"),
+          );
+
+          if (!imageFiles.length) {
+            return false;
+          }
+
+          event.preventDefault();
+
+          const dropPosition = view.posAtCoords({
+            left: event.clientX,
+            top: event.clientY,
+          })?.pos;
+
+          void handleImageFiles(imageFiles, dropPosition, editorRef.current);
+          return true;
+        },
+        handlePaste: (_view, event) => {
+          const clipboardData = event.clipboardData;
+
+          if (!clipboardData) {
+            return false;
+          }
+
+          const imageFiles = Array.from(clipboardData.files ?? []).filter(
+            (file) => file.type.startsWith("image/"),
+          );
+
+          if (imageFiles.length) {
+            event.preventDefault();
+            const pastePosition = editorRef.current?.state.selection.from;
+            void handleImageFiles(imageFiles, pastePosition, editorRef.current);
+            return true;
+          }
+
+          // Only intervene when there's no rich HTML payload (i.e. this isn't
+          // a paste from another rich-text app, which Tiptap already handles
+          // well) and the plain text looks like Markdown source.
+          const html = clipboardData.getData("text/html");
+          const text = clipboardData.getData("text/plain");
+
+          if (!html && text && looksLikeMarkdown(text)) {
             const activeEditor = editorRef.current;
 
             if (!activeEditor) {
-              return;
+              return false;
             }
 
-            const currentNode = activeEditor.state.doc.nodeAt(pos);
-            const currentLatex =
-              typeof currentNode?.attrs?.latex === "string" ? currentNode.attrs.latex : "";
-            const nextLatex = window.prompt("Edit inline LaTeX", currentLatex)?.trim();
+            event.preventDefault();
 
-            if (!nextLatex) {
-              return;
-            }
+            const convertedHtml = markdownToHtml(text);
+            const sanitizedHtml = DOMPurify.sanitize(
+              convertedHtml,
+              PASTE_SANITIZE_CONFIG,
+            );
 
-            activeEditor.chain().focus().updateInlineMath({ pos, latex: nextLatex }).run();
-          },
-        },
-        blockOptions: {
-          onClick: (_node, pos) => {
-            const activeEditor = editorRef.current;
+            activeEditor.chain().focus().insertContent(sanitizedHtml).run();
+            showSaveIndicator("Pasted as Markdown");
+            return true;
+          }
 
-            if (!activeEditor) {
-              return;
-            }
-
-            const currentNode = activeEditor.state.doc.nodeAt(pos);
-            const currentLatex =
-              typeof currentNode?.attrs?.latex === "string" ? currentNode.attrs.latex : "";
-            const nextLatex = window.prompt("Edit block LaTeX", currentLatex)?.trim();
-
-            if (!nextLatex) {
-              return;
-            }
-
-            activeEditor.chain().focus().updateBlockMath({ pos, latex: nextLatex }).run();
-          },
-        },
-        katexOptions: {
-          throwOnError: false,
-          strict: false,
-        },
-      }),
-      Placeholder.configure({
-        placeholder: "Write your masterpiece...",
-      }),
-      CharacterCount.configure({
-        limit: MAX_CHARACTERS,
-      }),
-      SlashCommand.configure({
-        items: slashCommands,
-      }),
-    ],
-    content: initialContent,
-    onCreate: ({ editor: activeEditor }) => {
-      editorRef.current = activeEditor;
-      onChangeRef.current(activeEditor.getHTML());
-    },
-    onUpdate: ({ editor: activeEditor }) => {
-      editorRef.current = activeEditor;
-      onChangeRef.current(activeEditor.getHTML());
-    },
-    onDestroy: () => {
-      editorRef.current = null;
-    },
-    editorProps: {
-      attributes: {
-        class:
-          "prose prose-lg focus:outline-none max-w-none min-h-[500px] px-1",
-      },
-      handleDrop: (view, event, _slice, moved) => {
-        if (moved) {
           return false;
-        }
-
-        const imageFiles = Array.from(event.dataTransfer?.files ?? []).filter((file) =>
-          file.type.startsWith("image/")
-        );
-
-        if (!imageFiles.length) {
-          return false;
-        }
-
-        event.preventDefault();
-
-        const dropPosition = view.posAtCoords({
-          left: event.clientX,
-          top: event.clientY,
-        })?.pos;
-
-        void handleImageFiles(imageFiles, dropPosition, editorRef.current);
-        return true;
-      },
-      handlePaste: (_view, event) => {
-        const imageFiles = Array.from(event.clipboardData?.files ?? []).filter((file) =>
-          file.type.startsWith("image/")
-        );
-
-        if (!imageFiles.length) {
-          return false;
-        }
-
-        event.preventDefault();
-        const pastePosition = editorRef.current?.state.selection.from;
-        void handleImageFiles(imageFiles, pastePosition, editorRef.current);
-        return true;
+        },
       },
     },
-  }, [initialContent, sessionToken, slashCommands, handleImageFiles]);
+    [initialContent, sessionToken, slashCommands, handleImageFiles],
+  );
 
   // Auto-save logic
   useEffect(() => {
@@ -766,6 +1038,70 @@ export default function ArticleEditor({
     };
   }, [editor, isLinkEditorOpen]);
 
+  // Ctrl/Cmd+F opens the in-editor find bar instead of the browser's native
+  // find, but only while this editor has focus.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "f") {
+        if (!editorRef.current?.isFocused) {
+          return;
+        }
+
+        event.preventDefault();
+        setIsFindOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (isFindOpen) {
+      findInputRef.current?.focus();
+    }
+  }, [isFindOpen]);
+
+  useEffect(() => {
+    if (!editor || !isFindOpen) {
+      return;
+    }
+
+    editor.commands.setSearchTerm(findQuery);
+  }, [editor, isFindOpen, findQuery]);
+
+  useEffect(() => {
+    if (!isExportMenuOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        exportMenuRef.current &&
+        !exportMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsExportMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, [isExportMenuOpen]);
+
+  useEffect(() => {
+    if (!isOutlineOpen) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        outlineMenuRef.current &&
+        !outlineMenuRef.current.contains(event.target as Node)
+      ) {
+        setIsOutlineOpen(false);
+      }
+    };
+
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, [isOutlineOpen]);
+
   const toolbarState =
     useEditorState({
       editor,
@@ -774,9 +1110,12 @@ export default function ArticleEditor({
           return DEFAULT_TOOLBAR_STATE;
         }
 
-        const currentHeadingLevel: HeadingLevelOption = activeEditor.isActive("heading", {
-          level: 1,
-        })
+        const currentHeadingLevel: HeadingLevelOption = activeEditor.isActive(
+          "heading",
+          {
+            level: 1,
+          },
+        )
           ? "h1"
           : activeEditor.isActive("heading", { level: 2 })
             ? "h2"
@@ -792,6 +1131,8 @@ export default function ArticleEditor({
           isUnderline: activeEditor.isActive("underline"),
           isHighlight: activeEditor.isActive("highlight"),
           isStrike: activeEditor.isActive("strike"),
+          isSubscript: activeEditor.isActive("subscript"),
+          isSuperscript: activeEditor.isActive("superscript"),
           isLink: activeEditor.isActive("link"),
           isInlineCode: activeEditor.isActive("code"),
           isYoutube: activeEditor.isActive("youtube"),
@@ -812,6 +1153,40 @@ export default function ArticleEditor({
       },
     }) ?? DEFAULT_TOOLBAR_STATE;
 
+  const headingOutline =
+    useEditorState({
+      editor,
+      selector: ({ editor: activeEditor }): HeadingOutlineEntry[] => {
+        if (!activeEditor) {
+          return [];
+        }
+
+        const headings: HeadingOutlineEntry[] = [];
+
+        activeEditor.state.doc.descendants((node, pos) => {
+          if (node.type.name === "heading") {
+            headings.push({
+              pos,
+              level:
+                typeof node.attrs.level === "number" ? node.attrs.level : 1,
+              text: node.textContent || "Untitled heading",
+            });
+          }
+        });
+
+        return headings;
+      },
+    }) ?? [];
+
+  const findState =
+    useEditorState({
+      editor,
+      selector: ({ editor: activeEditor }): FindState => ({
+        resultCount: activeEditor?.storage.findAndReplace?.results.length ?? 0,
+        activeIndex: activeEditor?.storage.findAndReplace?.activeIndex ?? 0,
+      }),
+    }) ?? DEFAULT_FIND_STATE;
+
   const openLinkEditor = useCallback(() => {
     const activeEditor = editorRef.current;
 
@@ -825,7 +1200,8 @@ export default function ArticleEditor({
     }
 
     const existingUrl =
-      (activeEditor.getAttributes("link").href as string | undefined) ?? "https://";
+      (activeEditor.getAttributes("link").href as string | undefined) ??
+      "https://";
     setLinkInputValue(existingUrl);
     setIsLinkEditorOpen(true);
   }, []);
@@ -869,13 +1245,21 @@ export default function ArticleEditor({
         crossAxis: 0,
       },
     }),
-    []
+    [],
   );
 
   const shouldShowBubbleMenu = useCallback(
-    ({ editor: activeEditor, from, to }: { editor: TiptapEditor; from: number; to: number }) =>
+    ({
+      editor: activeEditor,
+      from,
+      to,
+    }: {
+      editor: TiptapEditor;
+      from: number;
+      to: number;
+    }) =>
       isLinkEditorOpen || (!activeEditor.state.selection.empty && from !== to),
-    [isLinkEditorOpen]
+    [isLinkEditorOpen],
   );
 
   if (!editor) {
@@ -946,6 +1330,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().toggleBold().run()}
               className={bubbleButtonClass(toolbarState.isBold)}
               title="Bold"
+              aria-label="Bold"
             >
               <Bold size={16} />
             </button>
@@ -954,6 +1339,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().toggleItalic().run()}
               className={bubbleButtonClass(toolbarState.isItalic)}
               title="Italic"
+              aria-label="Italic"
             >
               <Italic size={16} />
             </button>
@@ -962,6 +1348,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().toggleUnderline().run()}
               className={bubbleButtonClass(toolbarState.isUnderline)}
               title="Underline"
+              aria-label="Underline"
             >
               <UnderlineIcon size={16} />
             </button>
@@ -970,14 +1357,34 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().toggleHighlight().run()}
               className={bubbleButtonClass(toolbarState.isHighlight)}
               title="Highlight"
+              aria-label="Highlight"
             >
               <Highlighter size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleSubscript().run()}
+              className={bubbleButtonClass(toolbarState.isSubscript)}
+              title="Subscript"
+              aria-label="Subscript"
+            >
+              <SubscriptIcon size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleSuperscript().run()}
+              className={bubbleButtonClass(toolbarState.isSuperscript)}
+              title="Superscript"
+              aria-label="Superscript"
+            >
+              <SuperscriptIcon size={16} />
             </button>
             <button
               type="button"
               onClick={openLinkEditor}
               className={bubbleButtonClass(toolbarState.isLink)}
               title="Link"
+              aria-label="Link"
             >
               <LinkIcon size={16} />
             </button>
@@ -986,16 +1393,9 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().toggleCode().run()}
               className={bubbleButtonClass(toolbarState.isInlineCode)}
               title="Inline Code"
+              aria-label="Inline code"
             >
               <Code size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => alert("Ask AI is coming soon.")}
-              className={bubbleButtonClass(false)}
-              title="Ask AI"
-            >
-              <Sparkles size={16} />
             </button>
           </>
         )}
@@ -1004,7 +1404,10 @@ export default function ArticleEditor({
       {/* Top Fixed Toolbar */}
       <div className="flex flex-wrap items-center gap-1 border-b border-border-light bg-surface p-2">
         <div className="relative">
-          <Heading size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+          <Heading
+            size={14}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-text-secondary"
+          />
           <select
             value={toolbarState.currentHeadingLevel}
             onChange={(event) => {
@@ -1020,6 +1423,7 @@ export default function ArticleEditor({
             }}
             className="h-9 rounded border border-border bg-bg pl-8 pr-3 text-sm text-text outline-none"
             title="Heading level"
+            aria-label="Heading level"
           >
             <option value="paragraph">Paragraph</option>
             <option value="h1">Heading 1</option>
@@ -1033,6 +1437,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleBold().run()}
           className={toolbarButtonClass(toolbarState.isBold)}
           title="Bold"
+          aria-label="Bold"
         >
           <Bold size={18} />
         </button>
@@ -1041,6 +1446,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleItalic().run()}
           className={toolbarButtonClass(toolbarState.isItalic)}
           title="Italic"
+          aria-label="Italic"
         >
           <Italic size={18} />
         </button>
@@ -1049,6 +1455,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleUnderline().run()}
           className={toolbarButtonClass(toolbarState.isUnderline)}
           title="Underline"
+          aria-label="Underline"
         >
           <UnderlineIcon size={18} />
         </button>
@@ -1057,6 +1464,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleHighlight().run()}
           className={toolbarButtonClass(toolbarState.isHighlight)}
           title="Highlight"
+          aria-label="Highlight"
         >
           <Highlighter size={18} />
         </button>
@@ -1065,8 +1473,27 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleStrike().run()}
           className={toolbarButtonClass(toolbarState.isStrike)}
           title="Strikethrough"
+          aria-label="Strikethrough"
         >
           <Strikethrough size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={() => editor.chain().focus().toggleSubscript().run()}
+          className={toolbarButtonClass(toolbarState.isSubscript)}
+          title="Subscript"
+          aria-label="Subscript"
+        >
+          <SubscriptIcon size={18} />
+        </button>
+        <button
+          type="button"
+          onClick={() => editor.chain().focus().toggleSuperscript().run()}
+          className={toolbarButtonClass(toolbarState.isSuperscript)}
+          title="Superscript"
+          aria-label="Superscript"
+        >
+          <SuperscriptIcon size={18} />
         </button>
 
         <button
@@ -1074,6 +1501,7 @@ export default function ArticleEditor({
           onClick={openLinkEditor}
           className={toolbarButtonClass(toolbarState.isLink)}
           title="Link"
+          aria-label="Link"
           disabled={!toolbarState.hasSelection}
         >
           <LinkIcon size={18} />
@@ -1086,6 +1514,7 @@ export default function ArticleEditor({
           onClick={handleImageUpload}
           className={toolbarButtonClass()}
           title="Upload Image"
+          aria-label="Upload image"
         >
           <ImageIcon size={18} />
         </button>
@@ -1095,6 +1524,7 @@ export default function ArticleEditor({
           onClick={() => insertYoutubeVideo(editor)}
           className={toolbarButtonClass(toolbarState.isYoutube)}
           title="Embed YouTube"
+          aria-label="Embed YouTube video"
         >
           <PlaySquare size={18} />
         </button>
@@ -1106,6 +1536,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleCodeBlock().run()}
           className={toolbarButtonClass(toolbarState.isCodeBlock)}
           title="Code Block"
+          aria-label="Code block"
         >
           <Code size={18} />
         </button>
@@ -1114,6 +1545,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
           className={toolbarButtonClass(toolbarState.isBlockquote)}
           title="Blockquote"
+          aria-label="Blockquote"
         >
           <Quote size={18} />
         </button>
@@ -1122,6 +1554,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().setHorizontalRule().run()}
           className={toolbarButtonClass(false)}
           title="Divider"
+          aria-label="Insert divider"
         >
           <Minus size={18} />
         </button>
@@ -1133,6 +1566,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           className={toolbarButtonClass(toolbarState.isBulletList)}
           title="Bullet List"
+          aria-label="Bullet list"
         >
           <List size={18} />
         </button>
@@ -1141,6 +1575,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
           className={toolbarButtonClass(toolbarState.isOrderedList)}
           title="Ordered List"
+          aria-label="Ordered list"
         >
           <ListOrdered size={18} />
         </button>
@@ -1149,6 +1584,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().toggleTaskList().run()}
           className={toolbarButtonClass(toolbarState.isTaskList)}
           title="Task List"
+          aria-label="Task list"
         >
           <CheckSquare size={18} />
         </button>
@@ -1166,6 +1602,7 @@ export default function ArticleEditor({
           }
           className={toolbarButtonClass(toolbarState.isTable)}
           title="Insert Table"
+          aria-label="Insert table"
         >
           <Table2 size={18} />
         </button>
@@ -1177,6 +1614,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().addRowAfter().run()}
               className={toolbarButtonClass(false)}
               title="Add Row"
+              aria-label="Add table row"
             >
               +R
             </button>
@@ -1185,6 +1623,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().deleteRow().run()}
               className={toolbarButtonClass(false)}
               title="Delete Row"
+              aria-label="Delete table row"
             >
               -R
             </button>
@@ -1193,6 +1632,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().addColumnAfter().run()}
               className={toolbarButtonClass(false)}
               title="Add Column"
+              aria-label="Add table column"
             >
               +C
             </button>
@@ -1201,6 +1641,7 @@ export default function ArticleEditor({
               onClick={() => editor.chain().focus().deleteColumn().run()}
               className={toolbarButtonClass(false)}
               title="Delete Column"
+              aria-label="Delete table column"
             >
               -C
             </button>
@@ -1214,6 +1655,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().setTextAlign("left").run()}
           className={toolbarButtonClass(toolbarState.isAlignLeft)}
           title="Align Left"
+          aria-label="Align left"
         >
           <AlignLeft size={18} />
         </button>
@@ -1222,6 +1664,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().setTextAlign("center").run()}
           className={toolbarButtonClass(toolbarState.isAlignCenter)}
           title="Align Center"
+          aria-label="Align center"
         >
           <AlignCenter size={18} />
         </button>
@@ -1230,6 +1673,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().setTextAlign("right").run()}
           className={toolbarButtonClass(toolbarState.isAlignRight)}
           title="Align Right"
+          aria-label="Align right"
         >
           <AlignRight size={18} />
         </button>
@@ -1241,6 +1685,7 @@ export default function ArticleEditor({
           onClick={() => insertInlineMathNode(editor)}
           className={toolbarButtonClass(toolbarState.isInlineMath)}
           title="Inline Math"
+          aria-label="Insert inline math"
         >
           <Sigma size={18} />
         </button>
@@ -1249,6 +1694,7 @@ export default function ArticleEditor({
           onClick={() => insertBlockMathNode(editor)}
           className={toolbarButtonClass(toolbarState.isBlockMath)}
           title="Block Math"
+          aria-label="Insert block math"
         >
           $$
         </button>
@@ -1257,9 +1703,97 @@ export default function ArticleEditor({
 
         <button
           type="button"
+          onClick={openFindBar}
+          className={toolbarButtonClass(isFindOpen)}
+          title="Find & Replace (Ctrl/Cmd+F)"
+          aria-label="Find and replace"
+        >
+          <Search size={18} />
+        </button>
+
+        <div className="relative" ref={outlineMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsOutlineOpen((wasOpen) => !wasOpen)}
+            className={toolbarButtonClass(isOutlineOpen)}
+            title="Document Outline"
+            aria-label="Document outline"
+          >
+            <OutlineIcon size={18} />
+          </button>
+
+          {isOutlineOpen && (
+            <div className="absolute left-0 top-full z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-lg border border-border bg-bg-elevated p-1 shadow-lg">
+              {headingOutline.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-text-secondary">
+                  Add headings to see an outline
+                </div>
+              ) : (
+                headingOutline.map((heading) => (
+                  <button
+                    key={heading.pos}
+                    type="button"
+                    onClick={() => {
+                      editor
+                        .chain()
+                        .focus()
+                        .setTextSelection(heading.pos + 1)
+                        .scrollIntoView()
+                        .run();
+                      setIsOutlineOpen(false);
+                    }}
+                    style={{
+                      paddingLeft: `${0.75 + (heading.level - 1) * 0.75}rem`,
+                    }}
+                    className="block w-full truncate rounded-md py-1.5 pr-3 text-left text-sm text-text hover:bg-surface"
+                  >
+                    {heading.text}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            onClick={() => setIsExportMenuOpen((wasOpen) => !wasOpen)}
+            className={toolbarButtonClass(isExportMenuOpen)}
+            title="Export as Markdown"
+            aria-label="Export as Markdown"
+          >
+            <Download size={18} />
+          </button>
+
+          {isExportMenuOpen && (
+            <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-border bg-bg-elevated p-1 shadow-lg">
+              <button
+                type="button"
+                onClick={() => void handleCopyMarkdown()}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm text-text hover:bg-surface"
+              >
+                Copy as Markdown
+              </button>
+              <button
+                type="button"
+                onClick={handleDownloadMarkdown}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm text-text hover:bg-surface"
+              >
+                Download .md file
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mx-1 h-6 w-px bg-border" />
+
+        <button
+          type="button"
           onClick={() => editor.chain().focus().undo().run()}
           className={toolbarButtonClass()}
           title="Undo"
+          aria-label="Undo"
           disabled={!toolbarState.canUndo}
         >
           <Undo2 size={18} />
@@ -1269,6 +1803,7 @@ export default function ArticleEditor({
           onClick={() => editor.chain().focus().redo().run()}
           className={toolbarButtonClass()}
           title="Redo"
+          aria-label="Redo"
           disabled={!toolbarState.canRedo}
         >
           <Redo2 size={18} />
@@ -1279,13 +1814,112 @@ export default function ArticleEditor({
         </div>
       </div>
 
+      {isFindOpen && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border-light bg-surface px-3 py-2">
+          <Search size={14} className="shrink-0 text-text-secondary" />
+          <input
+            ref={findInputRef}
+            type="text"
+            value={findQuery}
+            onChange={(event) => setFindQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                if (event.shiftKey) {
+                  editor.commands.goToPreviousMatch();
+                } else {
+                  editor.commands.goToNextMatch();
+                }
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeFindBar();
+              }
+            }}
+            placeholder="Find in article"
+            aria-label="Find in article"
+            className="h-8 w-40 rounded border border-border bg-bg px-2 text-sm text-text outline-none"
+          />
+          <span className="min-w-[2.5rem] text-xs text-text-secondary">
+            {findQuery
+              ? `${findState.resultCount ? findState.activeIndex + 1 : 0}/${findState.resultCount}`
+              : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => editor.commands.goToPreviousMatch()}
+            className={toolbarButtonClass()}
+            title="Previous match"
+            aria-label="Previous match"
+            disabled={!findState.resultCount}
+          >
+            <ChevronUp size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => editor.commands.goToNextMatch()}
+            className={toolbarButtonClass()}
+            title="Next match"
+            aria-label="Next match"
+            disabled={!findState.resultCount}
+          >
+            <ChevronDown size={16} />
+          </button>
+
+          <div className="mx-1 h-6 w-px bg-border" />
+
+          <input
+            type="text"
+            value={replaceQuery}
+            onChange={(event) => setReplaceQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeFindBar();
+              }
+            }}
+            placeholder="Replace with"
+            aria-label="Replace with"
+            className="h-8 w-40 rounded border border-border bg-bg px-2 text-sm text-text outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => editor.commands.replaceActiveMatch(replaceQuery)}
+            className="rounded border border-border px-2 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-bg disabled:opacity-40"
+            disabled={!findState.resultCount}
+          >
+            Replace
+          </button>
+          <button
+            type="button"
+            onClick={() => editor.commands.replaceAllMatches(replaceQuery)}
+            className="rounded border border-border px-2 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-bg disabled:opacity-40"
+            disabled={!findState.resultCount}
+          >
+            Replace all
+          </button>
+
+          <button
+            type="button"
+            onClick={closeFindBar}
+            className="ml-auto rounded p-1.5 text-text-secondary transition hover:bg-bg hover:text-text"
+            title="Close find & replace"
+            aria-label="Close find and replace"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
       {/* Editor Content Area */}
       <div className="p-4 sm:p-6 lg:p-8 min-h-[500px]">
         <EditorContent editor={editor} />
       </div>
 
       <div className="border-t border-border-light bg-surface px-3 py-2 text-xs text-text-secondary">
-        Type / for commands. Drag, drop, or paste images directly into the editor.
+        Type / for commands &middot; paste Markdown to auto-format &middot;
+        Ctrl/Cmd+F to find &amp; replace &middot; drag, drop, or paste images
+        directly into the editor.
       </div>
     </div>
   );

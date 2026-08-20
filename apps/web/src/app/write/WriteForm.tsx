@@ -3,7 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, Check, FileText, ImagePlus, Loader2, UploadCloud, X } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  FileText,
+  ImagePlus,
+  Loader2,
+  UploadCloud,
+  X,
+} from "lucide-react";
 import DOMPurify from "dompurify";
 import ArticleEditor from "@/components/editor/ArticleEditor";
 import { Button } from "@/components/ui/Button";
@@ -67,7 +76,9 @@ function stripHtmlToText(html: string): string {
 
 function isEditorContentEmpty(html: string): boolean {
   if (typeof document === "undefined") {
-    const plainText = stripHtmlToText(html).replace(/\u00a0/g, " ").trim();
+    const plainText = stripHtmlToText(html)
+      .replace(/\u00a0/g, " ")
+      .trim();
     const hasMedia = /<(img|iframe)\b[^>]*>/i.test(html);
     return plainText.length === 0 && !hasMedia;
   }
@@ -122,6 +133,8 @@ function sanitizeArticleBody(html: string): string {
       "class",
       "colspan",
       "colwidth",
+      "data-align",
+      "data-checked",
       "data-latex",
       "data-type",
       "frameborder",
@@ -130,6 +143,7 @@ function sanitizeArticleBody(html: string): string {
       "referrerpolicy",
       "rowspan",
       "src",
+      "style",
       "title",
       "width",
     ],
@@ -247,7 +261,10 @@ function isSafeHttpUrl(value: string): boolean {
 }
 
 function createDraftId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
 
@@ -256,7 +273,9 @@ function createDraftId(): string {
 
 function getPlainTextFromHtml(html: string): string {
   if (typeof document === "undefined") {
-    return stripHtmlToText(html).replace(/\u00a0/g, " ").trim();
+    return stripHtmlToText(html)
+      .replace(/\u00a0/g, " ")
+      .trim();
   }
 
   const temp = document.createElement("div");
@@ -280,7 +299,10 @@ function formatDraftTime(isoTimestamp: string): string {
   });
 }
 
-function parseStoredDraft(raw: string | null, storageKey: string): RestoreDraft | null {
+function parseStoredDraft(
+  raw: string | null,
+  storageKey: string,
+): RestoreDraft | null {
   if (!raw) {
     return null;
   }
@@ -296,7 +318,9 @@ function parseStoredDraft(raw: string | null, storageKey: string): RestoreDraft 
       title: parsed.title ?? "",
       subtitle: parsed.subtitle ?? "",
       body: parsed.body,
-      tags: Array.isArray(parsed.tags) ? parsed.tags.filter(Boolean).slice(0, 5) : [],
+      tags: Array.isArray(parsed.tags)
+        ? parsed.tags.filter(Boolean).slice(0, 5)
+        : [],
       category:
         parsed.category && CATEGORIES.includes(parsed.category)
           ? parsed.category
@@ -337,25 +361,37 @@ function findLatestDraftInStorage(): RestoreDraft | null {
   return drafts[0] ?? null;
 }
 
-export default function WriteForm({ sessionToken, initialArticle = null }: WriteFormProps) {
+export default function WriteForm({
+  sessionToken,
+  initialArticle = null,
+}: WriteFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [title, setTitle] = useState(initialArticle?.title ?? "");
   const [subtitle, setSubtitle] = useState(initialArticle?.subtitle ?? "");
   const [contentHtml, setContentHtml] = useState(initialArticle?.body ?? "");
-  const [category, setCategory] = useState(initialArticle?.category.name ?? "Campus News");
+  const [category, setCategory] = useState(
+    initialArticle?.category.name ?? "Campus News",
+  );
   const [tagInput, setTagInput] = useState("");
   const [tags, setTags] = useState<string[]>(initialArticle?.tags ?? []);
-  const [coverImageUrl, setCoverImageUrl] = useState(initialArticle?.coverImageUrl ?? "");
+  const [coverImageUrl, setCoverImageUrl] = useState(
+    initialArticle?.coverImageUrl ?? "",
+  );
   const [coverDragActive, setCoverDragActive] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [initialContent, setInitialContent] = useState(initialArticle?.body ?? "");
+  const [initialContent, setInitialContent] = useState(
+    initialArticle?.body ?? "",
+  );
   const [editorRenderKey, setEditorRenderKey] = useState(0);
-  const [draftId, setDraftId] = useState(initialArticle ? `edit-${initialArticle.slug}` : "");
+  const [draftId, setDraftId] = useState(
+    initialArticle ? `edit-${initialArticle.slug}` : "",
+  );
   const [draftSavedAt, setDraftSavedAt] = useState("");
-  const [restoreDraftToast, setRestoreDraftToast] = useState<RestoreDraft | null>(null);
+  const [restoreDraftToast, setRestoreDraftToast] =
+    useState<RestoreDraft | null>(null);
 
   useEffect(() => {
     if (initialArticle) {
@@ -424,7 +460,10 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
         savedAt: new Date().toISOString(),
       };
 
-      localStorage.setItem(`${DRAFT_KEY_PREFIX}${draftId}`, JSON.stringify(payload));
+      localStorage.setItem(
+        `${DRAFT_KEY_PREFIX}${draftId}`,
+        JSON.stringify(payload),
+      );
       setDraftSavedAt(payload.savedAt);
     }, 30000);
 
@@ -433,7 +472,8 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
 
   const { wordCount, characterCount, readTimeMinutes } = useMemo(() => {
     const plainText = getPlainTextFromHtml(contentHtml);
-    const words = plainText.length > 0 ? plainText.split(/\s+/).filter(Boolean).length : 0;
+    const words =
+      plainText.length > 0 ? plainText.split(/\s+/).filter(Boolean).length : 0;
     const characters = plainText.length;
 
     return {
@@ -453,7 +493,7 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
     setCategory(
       CATEGORIES.includes(restoreDraftToast.category)
         ? restoreDraftToast.category
-        : "Campus News"
+        : "Campus News",
     );
     setTags(restoreDraftToast.tags.slice(0, 5));
     setContentHtml(restoreDraftToast.body);
@@ -471,12 +511,13 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
         tags: restoreDraftToast.tags,
         category: restoreDraftToast.category,
         excerpt:
-          restoreDraftToast.excerpt || buildExcerptFromHtml(restoreDraftToast.body),
+          restoreDraftToast.excerpt ||
+          buildExcerptFromHtml(restoreDraftToast.body),
         savedAt: restoreDraftToast.savedAt,
       };
       localStorage.setItem(
         `${DRAFT_KEY_PREFIX}${restoreDraftToast.draftId}`,
-        JSON.stringify(migratedDraft)
+        JSON.stringify(migratedDraft),
       );
       localStorage.removeItem(LEGACY_DRAFT_BODY_KEY);
     }
@@ -549,12 +590,16 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
 
       if (!response.ok) {
         throw new Error(
-          body?.message ?? body?.error ?? `Cover upload failed (HTTP ${response.status}).`
+          body?.message ??
+            body?.error ??
+            `Cover upload failed (HTTP ${response.status}).`,
         );
       }
 
       if (!body?.public_url || !isSafeHttpUrl(body.public_url)) {
-        throw new Error("Upload succeeded but no valid image URL was returned.");
+        throw new Error(
+          "Upload succeeded but no valid image URL was returned.",
+        );
       }
 
       setCoverImageUrl(body.public_url);
@@ -601,7 +646,8 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
 
     try {
       const excerpt = buildExcerptFromHtml(sanitizedBody);
-      const nextCoverImageUrl = coverImageUrl.trim() || extractFirstImageUrl(sanitizedBody);
+      const nextCoverImageUrl =
+        coverImageUrl.trim() || extractFirstImageUrl(sanitizedBody);
       // Subtitle/deck is optional; when blank it falls back to the excerpt.
       const nextSubtitle = subtitle.trim() || excerpt;
 
@@ -628,9 +674,11 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
         body: JSON.stringify(payload),
       });
 
-      const body = await parseJsonSafe<{ message?: string; error?: string; slug?: string }>(
-        res
-      );
+      const body = await parseJsonSafe<{
+        message?: string;
+        error?: string;
+        slug?: string;
+      }>(res);
 
       if (res.status === 401) {
         throw new Error("Session expired. Please refresh and sign in again.");
@@ -640,7 +688,7 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
         throw new Error(
           body?.message ??
             body?.error ??
-            `Failed to ${initialArticle ? "update" : "submit"} article (HTTP ${res.status})`
+            `Failed to ${initialArticle ? "update" : "submit"} article (HTTP ${res.status})`,
         );
       }
 
@@ -652,12 +700,11 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
 
       if (!body?.slug) {
         throw new Error(
-          "Article created, but server response was invalid. Please refresh and check your articles."
+          "Article created, but server response was invalid. Please refresh and check your articles.",
         );
       }
 
       router.push(ROUTES.article.detail(body.slug));
-      
     } catch (err: unknown) {
       console.error(err);
       const message =
@@ -691,7 +738,7 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
                 {initialArticle
                   ? `Editing ${initialArticle.slug}`
                   : draftSavedAt
-                  ? `Draft saved ${formatDraftTime(draftSavedAt)}`
+                    ? `Draft saved ${formatDraftTime(draftSavedAt)}`
                     : "Draft autosaves every 30 seconds"}
               </p>
             </div>
@@ -702,7 +749,11 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
             <span>{readTimeMinutes || 1} min read</span>
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || !title.trim() || isEditorContentEmpty(contentHtml)}
+              disabled={
+                isSubmitting ||
+                !title.trim() ||
+                isEditorContentEmpty(contentHtml)
+              }
               size="sm"
             >
               {isSubmitting ? (
@@ -710,8 +761,10 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {initialArticle ? "Saving" : "Publishing"}
                 </>
+              ) : initialArticle ? (
+                "Save"
               ) : (
-                initialArticle ? "Save" : "Publish"
+                "Publish"
               )}
             </Button>
           </div>
@@ -719,223 +772,240 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
       </header>
 
       <main className="mx-auto max-w-5xl px-5 py-10 md:px-8 md:py-14">
-      {/* Meta Input Area */}
-      <div className="mb-8 space-y-6">
-        <div className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-accent">
-          <FileText className="h-3.5 w-3.5" />
-          {initialArticle ? "Edit article" : "New article"}
-        </div>
-
-        <textarea
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Your headline..."
-          className="w-full resize-none bg-transparent font-heading text-4xl font-semibold leading-tight tracking-tight text-text outline-none placeholder:text-text-tertiary md:text-6xl"
-          rows={2}
-        />
-
-        <textarea
-          value={subtitle}
-          onChange={(e) => setSubtitle(e.target.value)}
-          placeholder="Add a subtitle or deck (optional — defaults to the preview)..."
-          className="w-full resize-none bg-transparent font-heading text-xl italic leading-relaxed text-text-secondary outline-none placeholder:text-text-tertiary md:text-2xl"
-          rows={2}
-        />
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="appearance-none rounded-full border border-accent/20 bg-accent/10 pl-4 pr-9 py-2 text-xs font-bold uppercase tracking-[0.18em] text-accent outline-none focus:border-accent/60"
-            >
-              {CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
-            <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-accent">
-              ▾
-            </span>
+        {/* Meta Input Area */}
+        <div className="mb-8 space-y-6">
+          <div className="inline-flex items-center gap-2 rounded-full bg-accent/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-accent">
+            <FileText className="h-3.5 w-3.5" />
+            {initialArticle ? "Edit article" : "New article"}
           </div>
 
-          <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
-            {tags.map((t) => (
-              <span
-                key={t}
-                className="flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-sm text-text"
+          <textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Your headline..."
+            className="w-full resize-none bg-transparent font-heading text-4xl font-semibold leading-tight tracking-tight text-text outline-none placeholder:text-text-tertiary md:text-6xl"
+            rows={2}
+          />
+
+          <textarea
+            value={subtitle}
+            onChange={(e) => setSubtitle(e.target.value)}
+            placeholder="Add a subtitle or deck (optional — defaults to the preview)..."
+            className="w-full resize-none bg-transparent font-heading text-xl italic leading-relaxed text-text-secondary outline-none placeholder:text-text-tertiary md:text-2xl"
+            rows={2}
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="appearance-none rounded-full border border-accent/20 bg-accent/10 pl-4 pr-9 py-2 text-xs font-bold uppercase tracking-[0.18em] text-accent outline-none focus:border-accent/60"
               >
-                #{t}
-                <button
-                  onClick={() => removeTag(t)}
-                  className="text-text-tertiary transition-colors hover:text-accent"
-                >
-                  <X size={14} />
-                </button>
+                {CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-accent">
+                ▾
               </span>
-            ))}
-            {tags.length < 5 && (
-              <input
-                type="text"
-                placeholder={tags.length === 0 ? "Add tags (comma separated)..." : "..."}
-                value={tagInput}
-                onChange={(e) => setTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                className="w-56 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-tertiary"
-              />
-            )}
-          </div>
-        </div>
-
-        <div
-          onDragEnter={(event) => {
-            event.preventDefault();
-            setCoverDragActive(true);
-          }}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setCoverDragActive(true);
-          }}
-          onDragLeave={(event) => {
-            event.preventDefault();
-            setCoverDragActive(false);
-          }}
-          onDrop={handleCoverDrop}
-          className={`overflow-hidden rounded-lg border border-dashed transition-colors ${
-            coverDragActive
-              ? "border-accent bg-accent/10"
-              : "border-border bg-bg-elevated"
-          }`}
-        >
-          {coverImageUrl ? (
-            <div className="grid gap-0 md:grid-cols-[1fr_280px]">
-              <div className="aspect-[16/7] bg-surface">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={coverImageUrl}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              </div>
-              <div className="flex flex-col justify-between gap-4 border-t border-border-light p-4 md:border-l md:border-t-0">
-                <div>
-                  <p className="text-sm font-semibold text-text">Cover image</p>
-                  <p className="mt-1 break-all text-xs text-text-tertiary">{coverImageUrl}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={coverUploading}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {coverUploading ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <UploadCloud className="h-3.5 w-3.5" />
-                    )}
-                    Replace
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCoverImageUrl("")}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-surface hover:text-text"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                    Remove
-                  </button>
-                </div>
-              </div>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={coverUploading}
-              className="flex w-full flex-col items-center justify-center gap-3 px-6 py-10 text-center transition-colors disabled:cursor-wait disabled:opacity-70"
-            >
-              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface text-accent">
-                {coverUploading ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <ImagePlus className="h-5 w-5" />
-                )}
-              </span>
-              <span>
-                <span className="block text-sm font-semibold text-text">
-                  Drop a cover image here or browse
+
+            <div className="flex min-h-10 flex-wrap items-center gap-2 rounded-full border border-border bg-bg-elevated px-3 py-1.5 focus-within:ring-2 focus-within:ring-accent/30">
+              {tags.map((t) => (
+                <span
+                  key={t}
+                  className="flex items-center gap-1 rounded-full bg-surface px-2 py-0.5 text-sm text-text"
+                >
+                  #{t}
+                  <button
+                    onClick={() => removeTag(t)}
+                    className="text-text-tertiary transition-colors hover:text-accent"
+                  >
+                    <X size={14} />
+                  </button>
                 </span>
-                <span className="mt-1 block text-xs text-text-tertiary">
-                  JPG, PNG, or WEBP. This becomes the article card image.
+              ))}
+              {tags.length < 5 && (
+                <input
+                  type="text"
+                  placeholder={
+                    tags.length === 0 ? "Add tags (comma separated)..." : "..."
+                  }
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={handleTagKeyDown}
+                  className="w-56 border-none bg-transparent text-sm text-text outline-none placeholder:text-text-tertiary"
+                />
+              )}
+            </div>
+          </div>
+
+          <div
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setCoverDragActive(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setCoverDragActive(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              setCoverDragActive(false);
+            }}
+            onDrop={handleCoverDrop}
+            className={`overflow-hidden rounded-lg border border-dashed transition-colors ${
+              coverDragActive
+                ? "border-accent bg-accent/10"
+                : "border-border bg-bg-elevated"
+            }`}
+          >
+            {coverImageUrl ? (
+              <div className="grid gap-0 md:grid-cols-[1fr_280px]">
+                <div className="aspect-[16/7] bg-surface">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={coverImageUrl}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex flex-col justify-between gap-4 border-t border-border-light p-4 md:border-l md:border-t-0">
+                  <div>
+                    <p className="text-sm font-semibold text-text">
+                      Cover image
+                    </p>
+                    <p className="mt-1 break-all text-xs text-text-tertiary">
+                      {coverImageUrl}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={coverUploading}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-surface disabled:cursor-wait disabled:opacity-60"
+                    >
+                      {coverUploading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <UploadCloud className="h-3.5 w-3.5" />
+                      )}
+                      Replace
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCoverImageUrl("")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-text-secondary transition-colors hover:bg-surface hover:text-text"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={coverUploading}
+                className="flex w-full flex-col items-center justify-center gap-3 px-6 py-10 text-center transition-colors disabled:cursor-wait disabled:opacity-70"
+              >
+                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-surface text-accent">
+                  {coverUploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ImagePlus className="h-5 w-5" />
+                  )}
                 </span>
-              </span>
-            </button>
-          )}
-          <div className="border-t border-border-light bg-bg px-4 py-3">
+                <span>
+                  <span className="block text-sm font-semibold text-text">
+                    Drop a cover image here or browse
+                  </span>
+                  <span className="mt-1 block text-xs text-text-tertiary">
+                    JPG, PNG, or WEBP. This becomes the article card image.
+                  </span>
+                </span>
+              </button>
+            )}
+            <div className="border-t border-border-light bg-bg px-4 py-3">
+              <input
+                value={coverImageUrl}
+                onChange={(event) => setCoverImageUrl(event.target.value)}
+                placeholder="Paste an image URL, or upload one above"
+                className="w-full bg-transparent text-xs text-text outline-none placeholder:text-text-tertiary"
+              />
+            </div>
             <input
-              value={coverImageUrl}
-              onChange={(event) => setCoverImageUrl(event.target.value)}
-              placeholder="Paste an image URL, or upload one above"
-              className="w-full bg-transparent text-xs text-text outline-none placeholder:text-text-tertiary"
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleCoverInputChange}
+              className="hidden"
             />
           </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleCoverInputChange}
-            className="hidden"
+        </div>
+
+        {/* Tiptap Editor */}
+        <div className="mb-8">
+          <ArticleEditor
+            key={`editor-${editorRenderKey}`}
+            initialContent={initialContent}
+            sessionToken={sessionToken}
+            onChange={setContentHtml}
+            autosaveEnabled={false}
           />
         </div>
-      </div>
 
-      {/* Tiptap Editor */}
-      <div className="mb-8">
-        <ArticleEditor
-          key={`editor-${editorRenderKey}`}
-          initialContent={initialContent}
-          sessionToken={sessionToken}
-          onChange={setContentHtml}
-          autosaveEnabled={false}
-        />
-      </div>
-
-      {/* Action Area */}
-      <div className="flex justify-end gap-3 border-t border-border-light py-6">
-        <Button variant="ghost" type="button" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={isSubmitting || !title.trim() || isEditorContentEmpty(contentHtml)}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              {initialArticle ? "Saving..." : "Publishing..."}
-            </>
-          ) : (
-            initialArticle ? "Save Article" : "Publish Article"
-          )}
-        </Button>
-      </div>
+        {/* Action Area */}
+        <div className="flex justify-end gap-3 border-t border-border-light py-6">
+          <Button variant="ghost" type="button" onClick={() => router.back()}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              isSubmitting || !title.trim() || isEditorContentEmpty(contentHtml)
+            }
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                {initialArticle ? "Saving..." : "Publishing..."}
+              </>
+            ) : initialArticle ? (
+              "Save Article"
+            ) : (
+              "Publish Article"
+            )}
+          </Button>
+        </div>
       </main>
 
       <footer className="sticky bottom-0 z-30 border-t border-border bg-bg/95 py-2 backdrop-blur-md">
         <div className="container-editorial flex flex-wrap items-center justify-between gap-3 text-xs font-medium text-text-secondary">
           <div className="flex items-center gap-4">
             <span>
-              <strong className="text-text">{wordCount.toLocaleString()}</strong> words
+              <strong className="text-text">
+                {wordCount.toLocaleString()}
+              </strong>{" "}
+              words
             </span>
             <span
               className={`flex items-center gap-1 ${
                 characterCount > MAX_CHARACTERS ? "text-error" : ""
               }`}
             >
-              {characterCount > MAX_CHARACTERS && <AlertCircle className="h-3 w-3" />}
+              {characterCount > MAX_CHARACTERS && (
+                <AlertCircle className="h-3 w-3" />
+              )}
               <strong
-                className={characterCount > MAX_CHARACTERS ? "text-error" : "text-text"}
+                className={
+                  characterCount > MAX_CHARACTERS ? "text-error" : "text-text"
+                }
               >
                 {characterCount.toLocaleString()}
               </strong>
@@ -944,7 +1014,9 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
             <span>~{readTimeMinutes || 1} min read</span>
           </div>
           <div className="flex items-center gap-3">
-            <span className="hidden uppercase tracking-[0.18em] sm:block">Rich Text</span>
+            <span className="hidden uppercase tracking-[0.18em] sm:block">
+              Rich Text
+            </span>
             {draftSavedAt && (
               <span className="flex items-center gap-1">
                 <Check className="h-3 w-3 text-accent" />
@@ -957,7 +1029,9 @@ export default function WriteForm({ sessionToken, initialArticle = null }: Write
 
       {restoreDraftToast && (
         <div className="fixed bottom-6 right-6 z-[60] w-[min(92vw,380px)] rounded-xl border border-border bg-bg-elevated p-4 shadow-lg">
-          <p className="text-sm font-semibold text-text">Restore saved draft?</p>
+          <p className="text-sm font-semibold text-text">
+            Restore saved draft?
+          </p>
           <p className="mt-1 text-xs text-text-secondary">
             Last saved at {formatDraftTime(restoreDraftToast.savedAt)}.
           </p>

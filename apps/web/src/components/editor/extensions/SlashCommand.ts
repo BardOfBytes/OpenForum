@@ -1,13 +1,20 @@
 import { Extension, type Editor } from "@tiptap/core";
-import Suggestion, {
-  type SuggestionKeyDownProps,
-  type SuggestionProps,
-} from "@tiptap/suggestion";
+import { ReactRenderer } from "@tiptap/react";
+import Suggestion from "@tiptap/suggestion";
 import { PluginKey } from "@tiptap/pm/state";
+import type { LucideIcon } from "lucide-react";
+import tippy, {
+  type GetReferenceClientRect,
+  type Instance as TippyInstance,
+} from "tippy.js";
+import { SlashCommandList, type SlashCommandListRef } from "./SlashCommandList";
 
 export interface SlashCommandItem {
   title: string;
   description: string;
+  icon: LucideIcon;
+  /** Group heading shown above the first item of each category. */
+  category?: string;
   aliases?: string[];
   command: (editor: Editor) => void;
 }
@@ -17,280 +24,54 @@ interface SlashCommandOptions {
 }
 
 const slashCommandPluginKey = new PluginKey("openforum-slash-command");
+const MAX_VISIBLE_ITEMS = 40;
 
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function filterItems(items: SlashCommandItem[], query: string): SlashCommandItem[] {
+/**
+ * Ranks items so exact/prefix title matches beat alias matches, which beat
+ * generic substring matches anywhere in the title/description/aliases.
+ */
+function filterItems(
+  items: SlashCommandItem[],
+  query: string,
+): SlashCommandItem[] {
   const normalizedQuery = normalize(query);
 
   if (!normalizedQuery) {
     return items;
   }
 
-  return items.filter((item) => {
-    const haystack = [item.title, item.description, ...(item.aliases ?? [])]
-      .join(" ")
-      .toLowerCase();
+  return items
+    .map((item) => {
+      const title = item.title.toLowerCase();
+      const aliases = (item.aliases ?? []).map((alias) => alias.toLowerCase());
+      const haystack = [title, item.description.toLowerCase(), ...aliases].join(
+        " ",
+      );
 
-    return haystack.includes(normalizedQuery);
-  });
+      let score = 0;
+      if (title.startsWith(normalizedQuery)) score = 4;
+      else if (title.includes(normalizedQuery)) score = 3;
+      else if (aliases.some((alias) => alias.startsWith(normalizedQuery)))
+        score = 2;
+      else if (haystack.includes(normalizedQuery)) score = 1;
+
+      return { item, score };
+    })
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((entry) => entry.item);
 }
 
-function getMenuShellStyles(): Partial<CSSStyleDeclaration> {
-  return {
-    position: "fixed",
-    zIndex: "55",
-    minWidth: "260px",
-    maxWidth: "360px",
-    maxHeight: "320px",
-    overflowY: "auto",
-    background: "var(--color-bg-elevated)",
-    border: "1px solid var(--color-border)",
-    borderRadius: "12px",
-    boxShadow: "var(--shadow-lg)",
-    padding: "8px",
-  };
-}
-
-function getMenuItemStyles(selected: boolean): Partial<CSSStyleDeclaration> {
-  return {
-    display: "block",
-    width: "100%",
-    textAlign: "left",
-    borderRadius: "10px",
-    border: "1px solid transparent",
-    background: selected ? "var(--color-accent-light)" : "transparent",
-    color: "var(--color-text)",
-    padding: "8px 10px",
-    cursor: "pointer",
-    transition: "background 120ms ease, border-color 120ms ease",
-  };
-}
-
-function applyStyles(element: HTMLElement, styles: Partial<CSSStyleDeclaration>): void {
-  Object.assign(element.style, styles);
-}
-
-function createSlashRenderer() {
-  let menuElement: HTMLDivElement | null = null;
-  let listElement: HTMLDivElement | null = null;
-  let selectedIndex = 0;
-  let latestProps: SuggestionProps<SlashCommandItem, SlashCommandItem> | null = null;
-
-  const cleanup = () => {
-    if (menuElement && menuElement.parentNode) {
-      menuElement.parentNode.removeChild(menuElement);
-    }
-    menuElement = null;
-    listElement = null;
-    latestProps = null;
-    selectedIndex = 0;
-  };
-
-  const executeSelectedItem = (index: number): boolean => {
-    if (!latestProps || !latestProps.items.length) {
-      return false;
-    }
-
-    const safeIndex = Math.max(0, Math.min(index, latestProps.items.length - 1));
-    const selectedItem = latestProps.items[safeIndex];
-
-    latestProps.command(selectedItem);
-    cleanup();
-    return true;
-  };
-
-  const updateMenuPosition = () => {
-    if (!menuElement || !latestProps?.clientRect) {
-      return;
-    }
-
-    const rect = latestProps.clientRect();
-    if (!rect) {
-      return;
-    }
-
-    const margin = 8;
-    const menuWidth = menuElement.offsetWidth || 320;
-    const menuHeight = menuElement.offsetHeight || 240;
-
-    const left = Math.max(
-      margin,
-      Math.min(rect.left, window.innerWidth - menuWidth - margin)
-    );
-
-    const belowTop = rect.bottom + 8;
-    const aboveTop = rect.top - menuHeight - 8;
-    const top =
-      belowTop + menuHeight <= window.innerHeight - margin
-        ? belowTop
-        : Math.max(margin, aboveTop);
-
-    menuElement.style.left = `${left}px`;
-    menuElement.style.top = `${top}px`;
-  };
-
-  const renderList = () => {
-    if (!listElement || !latestProps) {
-      return;
-    }
-
-    const list = listElement;
-    let selectedButton: HTMLButtonElement | null = null;
-
-    const items = latestProps.items;
-    list.innerHTML = "";
-
-    if (!items.length) {
-      const emptyState = document.createElement("div");
-      emptyState.textContent = "No matching commands";
-      applyStyles(emptyState, {
-        color: "var(--color-text-secondary)",
-        fontSize: "13px",
-        padding: "8px 10px",
-      });
-      list.appendChild(emptyState);
-      return;
-    }
-
-    selectedIndex = Math.max(0, Math.min(selectedIndex, items.length - 1));
-
-    items.forEach((item, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      applyStyles(button, getMenuItemStyles(index === selectedIndex));
-
-      if (index === selectedIndex) {
-        selectedButton = button;
-      }
-
-      const title = document.createElement("div");
-      title.textContent = item.title;
-      applyStyles(title, {
-        fontSize: "13px",
-        fontWeight: "600",
-      });
-
-      const description = document.createElement("div");
-      description.textContent = item.description;
-      applyStyles(description, {
-        fontSize: "12px",
-        marginTop: "2px",
-        color: "var(--color-text-secondary)",
-      });
-
-      button.appendChild(title);
-      button.appendChild(description);
-
-      button.onmouseenter = () => {
-        selectedIndex = index;
-        renderList();
-      };
-
-      button.onmousedown = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void executeSelectedItem(index);
-      };
-
-      button.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void executeSelectedItem(index);
-      };
-
-      list.appendChild(button);
-    });
-
-    window.requestAnimationFrame(() => {
-      selectedButton?.scrollIntoView({ block: "nearest" });
-      updateMenuPosition();
-    });
-  };
-
-  return {
-    onStart: (props: SuggestionProps<SlashCommandItem, SlashCommandItem>) => {
-      cleanup();
-
-      latestProps = props;
-      selectedIndex = 0;
-
-      menuElement = document.createElement("div");
-      applyStyles(menuElement, getMenuShellStyles());
-
-      listElement = document.createElement("div");
-      menuElement.appendChild(listElement);
-
-      document.body.appendChild(menuElement);
-
-      renderList();
-      updateMenuPosition();
-    },
-
-    onUpdate: (props: SuggestionProps<SlashCommandItem, SlashCommandItem>) => {
-      latestProps = props;
-      selectedIndex = 0;
-      renderList();
-      updateMenuPosition();
-    },
-
-    onKeyDown: ({ event }: SuggestionKeyDownProps): boolean => {
-      if (!latestProps) {
-        return false;
-      }
-
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        if (!latestProps.items.length) {
-          return true;
-        }
-        selectedIndex = (selectedIndex + 1) % latestProps.items.length;
-        renderList();
-        return true;
-      }
-
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        if (!latestProps.items.length) {
-          return true;
-        }
-        selectedIndex =
-          (selectedIndex - 1 + latestProps.items.length) % latestProps.items.length;
-        renderList();
-        return true;
-      }
-
-      if (event.key === "Enter") {
-        if (!latestProps.items.length) {
-          return false;
-        }
-        event.preventDefault();
-        return executeSelectedItem(selectedIndex);
-      }
-
-      if (event.key === "Tab") {
-        if (!latestProps.items.length) {
-          return false;
-        }
-        event.preventDefault();
-        return executeSelectedItem(selectedIndex);
-      }
-
-      if (event.key === "Escape") {
-        event.preventDefault();
-        cleanup();
-        return true;
-      }
-
-      return false;
-    },
-
-    onExit: cleanup,
-  };
-}
-
+/**
+ * `/`-triggered command menu. Renders a React list (icons + category
+ * grouping + fuzzy-ish ranked search) positioned with tippy/popper, which
+ * handles viewport-edge collision far more robustly than manual DOM
+ * positioning math.
+ */
 export const SlashCommand = Extension.create<SlashCommandOptions>({
   name: "slashCommand",
 
@@ -301,6 +82,8 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
   },
 
   addProseMirrorPlugins() {
+    const getItems = () => this.options.items;
+
     return [
       Suggestion<SlashCommandItem, SlashCommandItem>({
         editor: this.editor,
@@ -308,16 +91,77 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
         char: "/",
         allowSpaces: true,
         startOfLine: false,
-        items: ({ query }) => filterItems(this.options.items, query).slice(0, 14),
+        items: ({ query }) =>
+          filterItems(getItems(), query).slice(0, MAX_VISIBLE_ITEMS),
         command: ({ editor, range, props }) => {
-          editor
-            .chain()
-            .focus()
-            .deleteRange(range)
-            .run();
+          editor.chain().focus().deleteRange(range).run();
           props.command(editor);
         },
-        render: createSlashRenderer,
+        render: () => {
+          let component: ReactRenderer<SlashCommandListRef> | null = null;
+          let popup: TippyInstance[] = [];
+
+          return {
+            onStart: (props) => {
+              component = new ReactRenderer(SlashCommandList, {
+                props: {
+                  items: props.items,
+                  query: props.query,
+                  command: props.command,
+                },
+                editor: props.editor,
+              });
+
+              if (!props.clientRect) {
+                return;
+              }
+
+              popup = tippy("body", {
+                getReferenceClientRect:
+                  props.clientRect as GetReferenceClientRect,
+                appendTo: () => document.body,
+                content: component.element,
+                showOnCreate: true,
+                interactive: true,
+                trigger: "manual",
+                placement: "bottom-start",
+                offset: [0, 8],
+                animation: false,
+              });
+            },
+
+            onUpdate(props) {
+              component?.updateProps({
+                items: props.items,
+                query: props.query,
+                command: props.command,
+              });
+
+              if (!props.clientRect) {
+                return;
+              }
+
+              popup[0]?.setProps({
+                getReferenceClientRect:
+                  props.clientRect as GetReferenceClientRect,
+              });
+            },
+
+            onKeyDown(props) {
+              if (props.event.key === "Escape") {
+                popup[0]?.hide();
+                return true;
+              }
+
+              return component?.ref?.onKeyDown(props) ?? false;
+            },
+
+            onExit() {
+              popup[0]?.destroy();
+              component?.destroy();
+            },
+          };
+        },
       }),
     ];
   },

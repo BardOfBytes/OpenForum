@@ -24,6 +24,8 @@
     "@tiptap/extension-link": "^3.22.3",
     "@tiptap/extension-mathematics": "^3.22.3",
     "@tiptap/extension-placeholder": "^3.22.3",
+    "@tiptap/extension-subscript": "3.22.3",
+    "@tiptap/extension-superscript": "3.22.3",
     "@tiptap/extension-table": "^3.22.3",
     "@tiptap/extension-table-cell": "^3.22.3",
     "@tiptap/extension-table-header": "^3.22.3",
@@ -43,15 +45,18 @@
     "katex": "^0.16.45",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.8.0",
+    "marked": "^15.0.7",
     "next": "14.2.35",
     "react": "^18",
     "react-dom": "^18",
-    "tippy.js": "^6.3.7"
+    "tippy.js": "^6.3.7",
+    "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/turndown": "^5.0.5",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
     "postcss": "^8",

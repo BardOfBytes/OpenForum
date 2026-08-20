@@ -9,11 +9,13 @@ This file is the working control document for migrating the production GitHub Op
 Port the **entire** Downloads/Replit OpenForum UI into the production Next app, **pixel-faithfully**, route by route and component by component — and wire the backend (new Rust APIs + curated Supabase schema) for any data the design needs. The Downloads/Replit UI is the visual golden source. The final production app must not look like the older GitHub OpenForum UI on any route, component, color system, spacing system, header, footer, card, form, empty state, or interaction surface.
 
 Locked decisions (2026-06-07):
+
 - **Fidelity: pixel-faithful.** Downloads is the law for layout/spacing/fonts/colors/icons. Where Downloads shows data prod lacks, ADD the backend API + Supabase column (do not fake it).
 - **Animations: add/port Framer Motion** for full parity (framer-motion is already installed).
 - **Extra prod-only routes** (`/guidelines` `/privacy` `/terms`): keep but restyle to the design system. Drop throwaway routes like `/shinchan`.
 
 Authoritative working docs for this effort:
+
 - `docs/ui-port-audit.md` — evidence: route-by-route Downloads-vs-prod diff + backend/DB gap list. **Root finding: a shadcn token vocabulary (`bg-primary`/`bg-card`/`text-foreground`/`font-serif`) is used by every migrated + Downloads component but is undefined in the prod Tailwind theme, so migrated surfaces are partly unstyled today — fixing the token layer is Slice 0 and unblocks everything.**
 - `docs/ui-port-plan.md` — the dependency-ordered slice plan (Slice 0 tokens → 1 animation → 2 shared components → 3 nav/footer → 4 home → 5 articles → 6 detail → 7 categories → 8 auth → 9 backend author data → 10 profile/author → 11 about contributors → 12 404/policy/cleanup → 13 QA).
 
@@ -127,8 +129,11 @@ The frontend migration direction changed from selective UI polish to complete Do
 2026-06-07 update: **Env example files corrected.** `apps/api/.env.example` now lists all vars the API actually reads (added `SUPABASE_SERVICE_KEY`, `ARTICLES_PROVIDER`, `STORAGE_PROVIDER`) and documents that dotenvy finds the repo-root `.env` (no separate `apps/api/.env` needed). Added a new `apps/web/.env.example` (client-safe `NEXT_PUBLIC_` vars only, with an explicit warning never to put the service key there).
 
 Resolved local blockers:
+
 - The earlier local CSS/static preview issue was reported as fixed by the user.
 - Production web builds now skip remote API fetches during `next build`, so unavailable DNS for `openforum-api.onrender.com` no longer pollutes or risks the build.
+
+2026-08-19 update: **`/write` article editor upgrade (feature work, not part of the Downloads UI port).** Extended `ArticleEditor.tsx` and added new extensions under `apps/web/src/components/editor/extensions/`: Markdown paste support (`src/lib/markdown.ts`, using `marked`, with a heuristic `looksLikeMarkdown` check so normal rich pastes from other editors are untouched), Markdown export (`htmlToMarkdown` via `turndown`, exposed as toolbar "Copy as Markdown"/"Download .md"), drag-to-resize + left/center/right-aligned images (`ResizableImage.tsx`, replacing the plain `@tiptap/extension-image`), an in-editor find & replace (`FindAndReplace.ts`, a custom ProseMirror-decoration extension, opened via a toolbar button or Ctrl/Cmd+F), a document-outline/heading-jump dropdown, subscript/superscript marks, and aria-labels on all toolbar/bubble-menu buttons. Also rewrote the `/`-slash-command menu (`SlashCommand.ts` + new `SlashCommandList.tsx`) to render via `ReactRenderer` + `tippy.js` positioning (the standard Tiptap pattern, replacing hand-rolled DOM/position math) with icons, category grouping (Basic blocks/Media/Advanced/Callouts/Actions), ranked fuzzy-ish search, and new items (4 callout variants, Find & Replace, Document Outline, Copy as Markdown). New dependencies: `marked`, `turndown` (+ `@types/turndown`), `@tiptap/extension-subscript`, `@tiptap/extension-superscript` (all pinned to match the existing `3.22.3` tiptap set). Extended `WriteForm.sanitizeArticleBody`'s DOMPurify allow-list with `data-align`, `data-checked`, `style` for the new image/task-list markup. Verified via `pnpm --filter @openforum/web typecheck/test:run/build` (all green; only a pre-existing-style `no-img-element` lint warning on the new resizable-image node view, which is unavoidable since it needs direct DOM control for resizing).
 
 ## Completed Work
 
@@ -252,6 +257,7 @@ Resolved local blockers:
 Status: in progress. Re-grounded 2026-06-07 by a full route-by-route audit (`docs/ui-port-audit.md`) into a dependency-ordered slice plan (`docs/ui-port-plan.md`). Execute slices in order, each gated by user review. The earlier "selectively migrated" surfaces below are real but were authored against shadcn tokens that don't resolve in prod yet — Slice 0 (token foundation) fixes that and is the prerequisite for the rest.
 
 Done:
+
 - Theme/dark-mode foundation.
 - Downloads-style global color token mapping.
 - Downloads-style Navbar and Footer.
@@ -273,6 +279,7 @@ Done:
 - Reviewed `/guidelines`, `/privacy`, `/terms`: already token-based and visually consistent via `EditorialInfoPage`; no change needed (Downloads has no policy pages).
 
 Next:
+
 - Continue route-by-route visual replacement from Downloads:
   - `/articles/[slug]`: perform browser QA and final micro-polish for comments/action/management spacing after comparing against the Downloads reader page.
   - `/categories/[slug]`: browser QA against the Downloads CategoryFeed page and adjust spacing/card counts if needed.
@@ -291,6 +298,7 @@ Next:
 - Do not call the UI migration complete until no old GitHub-styled route remains.
 
 Known backend/API gaps likely needed after visual parity:
+
 - Homepage-ready aggregate payload: featured/latest/category counts in one request.
 - Category archive counts/metadata in one request instead of per-category fanout.
 - Author/contributor list for the About page.
@@ -305,10 +313,12 @@ Known backend/API gaps likely needed after visual parity:
 Status: schema applied remotely, hardening in progress, application wiring not complete.
 
 Done:
+
 - Public schema created and verified in the existing Supabase project.
 - Supabase Auth already exists in the project.
 
 Next:
+
 - Verify RLS behavior with anon and authenticated tokens, not only table/policy existence.
 - Ensure profile insert/update policies bind `profiles.email` to the actual Supabase JWT email.
 - Keep public read grants limited to published articles and public profile/comment/social read surfaces.
@@ -322,11 +332,13 @@ Next:
 Status: in progress.
 
 Goals:
+
 - Make Supabase/Postgres the primary article/profile data path.
 - Keep the Rust Axum API as the orchestrator.
 - Remove legacy Google Sheets and Google Drive providers.
 
 Done:
+
 - Removed `ARTICLES_PROVIDER=sheets` and `STORAGE_PROVIDER=drive` branches from production code.
 - Made Postgres/Supabase and Cloudinary the only supported production data/storage path.
 - Deleted legacy Google Sheets and Google Drive service modules.
@@ -337,6 +349,7 @@ Done:
 - Added backend integration coverage for article update/delete and social flows.
 
 TODO:
+
 - Review profile fetch/update flow and decide whether Supabase REST remains the best path or direct Postgres is cleaner.
 - Add editor/admin moderation endpoints for hiding/deleting any comment. Completed 2026-06-05.
 - Add backend tests for explicit auth domain rejection and RLS-compatible data access.
@@ -346,6 +359,7 @@ TODO:
 Status: in progress.
 
 Done:
+
 - Article listing and article detail still use real server-side data.
 - Article action buttons now call real like/bookmark endpoints.
 - Article comments UI now reads public comments and posts authenticated comments.
@@ -354,6 +368,7 @@ Done:
 - Editors/admins now get inline comment hide/delete moderation controls.
 
 TODO:
+
 - Deploy or run the updated Rust API where the web app points, otherwise the new article/comment controls will hit missing endpoints.
 - Connect profile pages to real profile/article/follow data.
 - Verify publish/edit/delete flows from `/write` against the selected backend provider.
@@ -366,6 +381,7 @@ TODO:
 Status: pending.
 
 TODO:
+
 - Run web checks after each frontend slice:
   - `pnpm --filter @openforum/web typecheck`
   - `pnpm --filter @openforum/web test:run`
@@ -402,13 +418,14 @@ TODO:
 ## Remaining Deployment Steps
 
 New-Supabase-project (Singapore) cutover, in order:
+
 1. Configure Auth on the new project: enable Google provider (client ID/secret), set Site URL + redirect URLs (`https://openforum-web.vercel.app`, `http://localhost:3000`), and add the new callback `https://spyonburfyoxniulledb.supabase.co/auth/v1/callback` to Google Cloud Console authorized redirect URIs.
 2. (Optional) Migrate old Sydney data via `pg_dump`/`pg_restore` if existing content must be preserved (fresh-start is acceptable per product rules).
 3. Run end-to-end local smoke test against the new project:
    - login, create article, upload image, publish, like/bookmark/comment/follow, edit/delete article and comment.
 4. Paste the updated `Render.env` into Render's environment (new Supabase + new Redis values) and redeploy the Rust API; smoke test endpoints.
 5. Update Vercel env vars to the new Supabase URL + publishable key, then deploy the web app and run production QA.
-8. After the new project is verified, retire/pause the old Sydney project and rotate any secrets exposed during setup (DB password, service key, Redis token).
+6. After the new project is verified, retire/pause the old Sydney project and rotate any secrets exposed during setup (DB password, service key, Redis token).
 
 ## Working Rules For Future Agent Work
 
